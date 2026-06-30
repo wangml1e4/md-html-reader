@@ -136,3 +136,18 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 ---
 
 **总结**：核心架构和类型系统已就绪，功能原型可验证。当前受网络环境限制无法安装完整依赖，需解决后继续推进。
+
+### ✅ 阶段 2 — Markdown 编辑（已完成）
+- [x] CodeMirror 6 集成（专业编辑器，语法高亮）
+- [x] 预览/编辑/分屏三种模式切换
+- [x] 文件保存（File System Access API，原子写入）
+- [x] 文件打开（保留 fileHandle）
+- [x] 实时渲染（EditorView.updateListener）
+- [x] HTML 导出功能
+
+**提交**：`d9ffb71`
+
+**访问方式**：在预览面板打开 `editor.html`
+
+**阶段 3 下一步**：评论系统实现（核心技术挑战）
+
