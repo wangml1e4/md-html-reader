@@ -1,0 +1,15 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.svelte"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
