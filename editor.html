@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MD+HTML Reader - 编辑器版</title>
+
+  <!-- Highlight.js 代码高亮 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github.min.css">
+
+  <!-- CodeMirror 6 样式 -->
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      line-height: 1.47;
+      color: #1d1d1f;
+      background: #f5f5f7;
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* 顶部工具栏 */
+    .toolbar {
+      height: 44px;
+      background: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      flex-shrink: 0;
+    }
+
+    .toolbar-title {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: -0.12px;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .toolbar-actions button {
+      background: #1d1d1f;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 15px;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    }
+
+    .toolbar-actions button:hover {
+      background: #333333;
+    }
+
+    .toolbar-actions button:active {
+      transform: scale(0.95);
+    }
+
+    .toolbar-actions button.active {
+      background: #0066cc;
+    }
+
+    /* 主内容区 */
+    .content-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .editor-panel,
+    .preview-panel {
+      flex: 1;
+      overflow-y: auto;
+      background: #ffffff;
+    }
+
+    .editor-panel {
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .editor-wrapper {
+      flex: 1;
+      padding: 24px;
+    }
+
+    .cm-editor {
+      height: 100%;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .cm-scroller {
+      overflow: auto;
+    }
+
+    .cm-line {
+      padding-left: 4px;
+    }
+
+    .cm-content {
+      caret-color: #0066cc;
+    }
+
+    .cm-cursor {
+      border-left-color: #0066cc;
+    }
+
+    .preview-content {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+
+    /* 预览区样式（与 enhanced.html 一致）*/
+    .preview-content h1 {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+      font-size: 40px;
+      font-weight: 600;
+      line-height: 1.1;
+      color: #1d1d1f;
+      margin: 32px 0 16px;
+    }
+
+    .preview-content h2 {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+      font-size: 28px;
+      font-weight: 400;
+      line-height: 1.14;
+      letter-spacing: 0.196px;
+      color: #1d1d1f;
+      margin: 24px 0 12px;
+    }
+
+    .preview-content h3 {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+      font-size: 21px;
+      font-weight: 600;
+      line-height: 1.19;
+      letter-spacing: 0.231px;
+      color: #1d1d1f;
+      margin: 20px 0 8px;
+    }
+
+    .preview-content p {
+      margin: 12px 0;
+      font-size: 17px;
+      line-height: 1.47;
+      letter-spacing: -0.374px;
+    }
+
+    .preview-content code {
+      background: #f5f5f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', Monaco, Consolas, monospace;
+      font-size: 14px;
+    }
+
+    .preview-content pre {
+      background: #f5f5f7;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    .preview-content pre code {
+      background: none;
+      padding: 0;
+    }
+
+    .preview-content blockquote {
+      border-left: 4px solid #0066cc;
+      padding-left: 16px;
+      margin: 16px 0;
+      color: #7a7a7a;
+      font-style: italic;
+    }
+
+    .preview-content ul, .preview-content ol {
+      margin: 12px 0;
+      padding-left: 32px;
+    }
+
+    .preview-content li {
+      margin: 6px 0;
+    }
+
+    .preview-content strong {
+      font-weight: 600;
+    }
+
+    .preview-content a {
+      color: #0066cc;
+      text-decoration: none;
+    }
+
+    .preview-content a:hover {
+      text-decoration: underline;
+    }
+
+    .preview-content table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 16px 0;
+    }
+
+    .preview-content th,
+    .preview-content td {
+      border: 1px solid #e0e0e0;
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    .preview-content th {
+      background: #f5f5f7;
+      font-weight: 600;
+    }
+
+    .mermaid {
+      background: #ffffff;
+      padding: 24px;
+      margin: 24px 0;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+    }
+
+    /* 隐藏面板 */
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- 顶部工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-title">MD+HTML Reader</div>
+      <div class="toolbar-actions">
+        <button id="btn-preview" class="active" onclick="switchMode('preview')">预览</button>
+        <button id="btn-edit" onclick="switchMode('edit')">编辑</button>
+        <button id="btn-split" onclick="switchMode('split')">分屏</button>
+        <button onclick="openFile()">打开文件</button>
+        <button onclick="saveFile()">保存</button>
+        <button onclick="exportHTML()">导出 HTML</button>
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="content-area">
+      <!-- 编辑器面板 -->
+      <div id="editor-panel" class="editor-panel hidden">
+        <div class="editor-wrapper">
+          <div id="editor"></div>
+        </div>
+      </div>
+
+      <!-- 预览面板 -->
+      <div id="preview-panel" class="preview-panel">
+        <div id="preview" class="preview-content">
+          <h1>欢迎使用 MD+HTML Reader</h1>
+          <p>点击工具栏切换：预览/编辑/分屏模式。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 外部依赖 -->
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="module">
+    import { EditorView, basicSetup } from 'https://cdn.jsdelivr.net/npm/codemirror@6/dist/index.js';
+    import { markdown } from 'https://cdn.jsdelivr.net/npm/@codemirror/lang-markdown@6/dist/index.js';
+    import { EditorState } from 'https://cdn.jsdelivr.net/npm/@codemirror/state@6/dist/index.js';
+
+    // 初始化 Mermaid
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+    // 初始化 markdown-it
+    const md = window.markdownit({
+      html: false,
+      linkify: true,
+      typographer: true,
+      highlight: function (str, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return '<pre><code class="hljs">' +
+                   hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+                   '</code></pre>';
+          } catch (__) {}
+        }
+        return '<pre><code class="hljs">' + md.utils.escapeHtml(str) + '</code></pre>';
+      }
+    });
+
+    // 初始化 CodeMirror 6
+    let editorView;
+    let currentFileHandle = null;
+    let mermaidCounter = 0;
+
+    async function initEditor(initialContent = '') {
+      const state = EditorState.create({
+        doc: initialContent,
+        extensions: [
+          basicSetup,
+          markdown(),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              debounceRender();
+            }
+          })
+        ]
+      });
+
+      editorView = new EditorView({
+        state,
+        parent: document.getElementById('editor')
+      });
+    }
+
+    // 渲染 Markdown（与 enhanced.html 逻辑一致）
+    let renderTimeout;
+    function debounceRender() {
+      clearTimeout(renderTimeout);
+      renderTimeout = setTimeout(renderMarkdown, 300);
+    }
+
+    async function renderMarkdown() {
+      if (!editorView) return;
+
+      const source = editorView.state.doc.toString();
+      mermaidCounter = 0;
+
+      const mermaidBlocks = [];
+      const sourceWithPlaceholders = source.replace(/```mermaid\n([\s\S]*?)```/g, (match, code) => {
+        const id = `mermaid-${mermaidCounter++}`;
+        mermaidBlocks.push({ id, code: code.trim() });
+        return `<div id="${id}" class="mermaid-placeholder"></div>`;
+      });
+
+      const html = md.render(sourceWithPlaceholders);
+      document.getElementById('preview').innerHTML = html;
+
+      for (const block of mermaidBlocks) {
+        const element = document.getElementById(block.id);
+        if (element) {
+          try {
+            const { svg } = await mermaid.render(`mermaid-svg-${block.id}`, block.code);
+            element.innerHTML = svg;
+            element.classList.add('mermaid');
+            element.classList.remove('mermaid-placeholder');
+          } catch (err) {
+            element.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${err.message}</pre>`;
+          }
+        }
+      }
+    }
+
+    // 模式切换
+    window.switchMode = function(mode) {
+      const editorPanel = document.getElementById('editor-panel');
+      const previewPanel = document.getElementById('preview-panel');
+      const btnPreview = document.getElementById('btn-preview');
+      const btnEdit = document.getElementById('btn-edit');
+      const btnSplit = document.getElementById('btn-split');
+
+      // 清除所有 active 状态
+      [btnPreview, btnEdit, btnSplit].forEach(btn => btn.classList.remove('active'));
+
+      if (mode === 'preview') {
+        editorPanel.classList.add('hidden');
+        previewPanel.classList.remove('hidden');
+        btnPreview.classList.add('active');
+      } else if (mode === 'edit') {
+        editorPanel.classList.remove('hidden');
+        previewPanel.classList.add('hidden');
+        btnEdit.classList.add('active');
+      } else if (mode === 'split') {
+        editorPanel.classList.remove('hidden');
+        previewPanel.classList.remove('hidden');
+        btnSplit.classList.add('active');
+      }
+    }
+
+    // 打开文件
+    window.openFile = async function() {
+      if (!window.showOpenFilePicker) {
+        alert('您的浏览器不支持 File System Access API。请使用 Chrome/Edge 最新版。');
+        return;
+      }
+
+      try {
+        const [fileHandle] = await window.showOpenFilePicker({
+          types: [{
+            description: 'Markdown 文件',
+            accept: { 'text/markdown': ['.md', '.markdown'] }
+          }],
+          multiple: false
+        });
+
+        currentFileHandle = fileHandle;
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+
+        if (editorView) {
+          editorView.dispatch({
+            changes: {
+              from: 0,
+              to: editorView.state.doc.length,
+              insert: text
+            }
+          });
+        }
+
+        await renderMarkdown();
+        alert(`✓ 已打开 ${file.name}`);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          alert('✗ 打开失败: ' + err.message);
+        }
+      }
+    }
+
+    // 保存文件
+    window.saveFile = async function() {
+      if (!editorView) return;
+
+      const content = editorView.state.doc.toString();
+
+      if (!currentFileHandle) {
+        if (!window.showSaveFilePicker) {
+          alert('您的浏览器不支持 File System Access API。');
+          return;
+        }
+
+        try {
+          currentFileHandle = await window.showSaveFilePicker({
+            types: [{
+              description: 'Markdown 文件',
+              accept: { 'text/markdown': ['.md'] }
+            }],
+            suggestedName: 'document.md'
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            alert('✗ 保存失败: ' + err.message);
+          }
+          return;
+        }
+      }
+
+      try {
+        const writable = await currentFileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        alert('✓ 文件已保存');
+      } catch (err) {
+        alert('✗ 保存失败: ' + err.message);
+      }
+    }
+
+    // 导出 HTML
+    window.exportHTML = function() {
+      const html = document.getElementById('preview').innerHTML;
+      const fullHTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>导出的文档</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; line-height: 1.47; color: #1d1d1f; max-width: 980px; margin: 48px auto; padding: 0 24px; }
+    h1 { font-size: 40px; font-weight: 600; }
+    h2 { font-size: 28px; font-weight: 400; }
+    pre { background: #f5f5f7; padding: 16px; border-radius: 8px; overflow-x: auto; }
+    code { font-family: 'SF Mono', Monaco, Consolas, monospace; }
+    a { color: #0066cc; text-decoration: none; }
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+
+      const blob = new Blob([fullHTML], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'export.html';
+      a.click();
+      URL.revokeObjectURL(url);
+      alert('✓ HTML 已导出');
+    }
+
+    // 初始化
+    window.addEventListener('load', async () => {
+      await initEditor();
+
+      // 加载测试文档
+      try {
+        const response = await fetch('test-doc.md');
+        if (response.ok) {
+          const text = await response.text();
+          editorView.dispatch({
+            changes: { from: 0, to: 0, insert: text }
+          });
+          await renderMarkdown();
+        }
+      } catch (err) {
+        console.error('加载测试文档失败:', err);
+      }
+    });
+  </script>
+</body>
+</html>
