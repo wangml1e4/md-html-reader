@@ -296,9 +296,13 @@
       linkify: true,
       typographer: true,
       highlight: function (str, lang) {
+        // mermaid 块不高亮，保留原文 + language-mermaid 类，供渲染后替换
+        if (lang === 'mermaid') {
+          return '<pre><code class="language-mermaid">' + md.utils.escapeHtml(str) + '</code></pre>';
+        }
         if (lang && hljs.getLanguage(lang)) {
           try {
-            return '<pre><code class="hljs">' +
+            return '<pre><code class="hljs language-' + lang + '">' +
                    hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
                    '</code></pre>';
           } catch (__) {}
@@ -312,31 +316,28 @@
     async function renderMarkdown() {
       const source = document.getElementById('editor').value;
 
-      // 先提取 Mermaid 代码块
-      const mermaidBlocks = [];
-      const sourceWithPlaceholders = source.replace(/```mermaid\n([\s\S]*?)```/g, (match, code) => {
-        const id = `mermaid-${mermaidCounter++}`;
-        mermaidBlocks.push({ id, code: code.trim() });
-        return `<div id="${id}" class="mermaid-placeholder"></div>`;
-      });
+      // 渲染 Markdown（mermaid 代码块会先渲染成普通 <pre><code> 块）
+      const html = md.render(source);
+      const preview = document.getElementById('preview');
+      preview.innerHTML = html;
 
-      // 渲染 Markdown
-      const html = md.render(sourceWithPlaceholders);
-      document.getElementById('preview').innerHTML = html;
-
-      // 渲染 Mermaid 图表
-      for (const block of mermaidBlocks) {
-        const element = document.getElementById(block.id);
-        if (element) {
-          try {
-            const { svg } = await mermaid.render(`mermaid-svg-${block.id}`, block.code);
-            element.innerHTML = svg;
-            element.classList.add('mermaid');
-            element.classList.remove('mermaid-placeholder');
-          } catch (err) {
-            element.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${err.message}</pre>`;
-          }
+      // 渲染后在 DOM 中查找 mermaid 代码块并替换为图表
+      // 注意：因 html:false，无法用占位符 div，故采用渲染后替换策略
+      const codeBlocks = preview.querySelectorAll('pre code.language-mermaid');
+      for (const codeEl of codeBlocks) {
+        const code = codeEl.textContent.trim();
+        const id = `mermaid-svg-${mermaidCounter++}`;
+        const container = document.createElement('div');
+        container.className = 'mermaid';
+        try {
+          const { svg } = await mermaid.render(id, code);
+          container.innerHTML = svg;
+        } catch (err) {
+          container.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${err.message}</pre>`;
         }
+        // 用图表容器替换原始的 <pre> 元素
+        const preEl = codeEl.closest('pre');
+        preEl.replaceWith(container);
       }
     }
 

@@ -25,7 +25,7 @@
 
 ### TypeScript 接口定义
 
-\`\`\`typescript
+```typescript
 interface CommentAnchor {
   position: TextPositionSelector;
   quote: TextQuoteSelector;
@@ -40,11 +40,11 @@ interface Comment {
   body: string;
   createdAt: string;
 }
-\`\`\`
+```
 
 ### Rust 文件操作
 
-\`\`\`rust
+```rust
 use std::fs;
 use std::path::Path;
 
@@ -54,22 +54,22 @@ fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
     fs::rename(tmp_path, path)?;
     Ok(())
 }
-\`\`\`
+```
 
 ### JavaScript 实时渲染
 
-\`\`\`javascript
+```javascript
 document.getElementById('editor').addEventListener('input', () => {
   clearTimeout(renderTimeout);
   renderTimeout = setTimeout(renderMarkdown, 300);
 });
-\`\`\`
+```
 
 ## Mermaid 图表示例
 
 ### 项目架构流程图
 
-\`\`\`mermaid
+```mermaid
 graph TD
     A[Markdown 源文件] --> B[markdown-it 解析]
     B --> C[Token 流 + 源映射]
@@ -78,11 +78,11 @@ graph TD
     E --> F[用户选中文本]
     F --> G[创建评论锚点]
     G --> H[Sidecar 文件存储]
-\`\`\`
+```
 
 ### 评论系统时序图
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant User as 用户
     participant Preview as 预览区
@@ -95,11 +95,11 @@ sequenceDiagram
     User->>Anchor: 输入评论内容
     Anchor->>Sidecar: 原子写入 .md.comments.json
     Sidecar-->>Preview: 渲染高亮
-\`\`\`
+```
 
 ### 开发进度甘特图
 
-\`\`\`mermaid
+```mermaid
 gantt
     title MD+HTML Reader 开发计划
     dateFormat  YYYY-MM-DD
@@ -116,7 +116,7 @@ gantt
     源映射插件          :2026-07-04, 3d
     评论 UI             :2026-07-07, 2d
     锚点漂移            :2026-07-09, 2d
-\`\`\`
+```
 
 ## 设计理念
 
