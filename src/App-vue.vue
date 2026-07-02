@@ -33,7 +33,7 @@
         </div>
 
         <div v-else class="flex-1 overflow-hidden">
-          <MarkdownEditor
+          <MilkdownEditor
             :file="workspace.currentFile"
             @save="saveFile"
           />
@@ -58,7 +58,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useWorkspaceStore } from './stores/workspace'
 import { useCommentsStore } from './stores/comments'
 import FileTree from './components/FileTree.vue'
-import MarkdownEditor from './components/MarkdownEditor.vue'
+import MilkdownEditor from './components/MilkdownEditor.vue'
 import CommentSidebar from './components/CommentSidebar.vue'
 
 const workspace = useWorkspaceStore()
