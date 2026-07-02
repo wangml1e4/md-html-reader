@@ -3,6 +3,7 @@
 
 mod fs_handler;
 mod comments;
+mod search;
 
 use tauri::Manager;
 
@@ -19,6 +20,9 @@ fn main() {
             comments::save_comment,
             comments::delete_comment,
             comments::update_comment,
+            search::search_files,
+            search::search_content,
+            search::export_as_html,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
