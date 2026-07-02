@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
 const mimeTypes = {
   '.html': 'text/html',

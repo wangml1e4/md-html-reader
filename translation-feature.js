@@ -240,7 +240,12 @@ class TranslationFeature {
       body: JSON.stringify({
         model,
         prompt,
-        stream: false
+        stream: false,
+        think: false,       // 关闭 thinking 模式（qwen3.5 等推理模型），加快翻译
+        options: {
+          temperature: 0.3,  // 翻译任务用低温度，结果更稳定
+          num_predict: 512   // 限制输出长度，避免冗长
+        }
       })
     });
 
@@ -250,9 +255,13 @@ class TranslationFeature {
 
     const data = await response.json();
 
+    // 清理可能残留的 <think> 标签内容（部分模型即使 think:false 仍会输出）
+    let translated = (data.response || '').trim();
+    translated = translated.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
     return {
       original: text,
-      translated: data.response.trim(),
+      translated: translated,
       sourceLang: isChinese ? 'zh' : 'en',
       targetLang: isChinese ? 'en' : 'zh'
     };
