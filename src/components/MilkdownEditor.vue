@@ -23,10 +23,18 @@
     </div>
 
     <!-- Milkdown 编辑器容器 -->
-    <div class="flex-1 overflow-auto bg-white">
+    <div class="flex-1 overflow-auto bg-white relative">
       <div
         ref="editorRef"
         class="milkdown-container"
+      />
+
+      <!-- 评论工具提示 -->
+      <CommentTooltip
+        :show="showCommentTooltip"
+        :selection="currentSelection"
+        @addComment="handleAddComment"
+        @close="hideCommentTooltip"
       />
     </div>
   </div>
@@ -42,6 +50,9 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { prism } from '@milkdown/plugin-prism'
 import { nord } from '@milkdown/theme-nord'
 import '@milkdown/theme-nord/style.css'
+import CommentTooltip from './CommentTooltip.vue'
+import { onSelectionChange, type Selection } from '../utils/selection'
+import { createAnchor } from '../utils/comment-anchor'
 
 const props = defineProps<{
   file: { path: string; content: string }
@@ -49,6 +60,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   save: [content: string]
+  createComment: [anchor: any, content: string]
 }>()
 
 const editorRef = ref<HTMLElement | null>(null)
@@ -57,6 +69,11 @@ const currentContent = ref(props.file.content)
 const isSaving = ref(false)
 const lastSaved = ref<number | null>(null)
 const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+
+// 评论相关状态
+const showCommentTooltip = ref(false)
+const currentSelection = ref<Selection | null>(null)
+let cleanupSelection: (() => void) | null = null
 
 const fileName = computed(() => {
   return props.file.path.split('/').pop() || props.file.path
@@ -94,6 +111,9 @@ onMounted(async () => {
       .use(prism)
       .create()
 
+    // 初始化文本选择监听
+    setupSelectionListener()
+
   } catch (error) {
     console.error('初始化编辑器失败:', error)
   }
@@ -104,8 +124,39 @@ onUnmounted(() => {
   if (autoSaveTimer.value) {
     clearTimeout(autoSaveTimer.value)
   }
+  if (cleanupSelection) {
+    cleanupSelection()
+  }
   editor.value?.destroy()
 })
+
+// 设置文本选择监听
+function setupSelectionListener() {
+  cleanupSelection = onSelectionChange((selection) => {
+    currentSelection.value = selection
+
+    // 只有选中了文本才显示工具提示
+    showCommentTooltip.value = selection !== null && selection.text.length > 0
+  })
+}
+
+// 隐藏评论工具提示
+function hideCommentTooltip() {
+  showCommentTooltip.value = false
+  currentSelection.value = null
+}
+
+// 处理创建评论
+function handleAddComment(content: string, selection: Selection) {
+  const anchor = createAnchor(
+    currentContent.value,
+    selection.start,
+    selection.end
+  )
+
+  emit('createComment', anchor, content)
+  hideCommentTooltip()
+}
 
 // 监听文件变化，更新编辑器内容
 watch(() => props.file, async (newFile) => {
@@ -113,7 +164,6 @@ watch(() => props.file, async (newFile) => {
 
   currentContent.value = newFile.content
 
-  // 更新编辑器内容
   try {
     await editor.value.action((ctx) => {
       ctx.set(defaultValueCtx, newFile.content)

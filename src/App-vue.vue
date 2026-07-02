@@ -36,6 +36,7 @@
           <MilkdownEditor
             :file="workspace.currentFile"
             @save="saveFile"
+            @createComment="handleCreateComment"
           />
         </div>
       </section>
@@ -87,5 +88,22 @@ async function openFile(filePath: string) {
 
 async function saveFile(content: string) {
   await workspace.saveCurrentFile(content)
+}
+
+async function handleCreateComment(anchor: any, content: string) {
+  if (!workspace.currentFile) return
+
+  try {
+    await comments.saveComment({
+      fileHash: comments.currentFileHash!,
+      anchor,
+      content,
+      status: 'open',
+    })
+
+    console.log('评论创建成功')
+  } catch (error) {
+    console.error('创建评论失败:', error)
+  }
 }
 </script>
