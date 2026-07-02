@@ -351,6 +351,13 @@
     let currentSelection = null;
     let tooltipElement = null;
 
+    // HTML 转义函数（防止 XSS）
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
     // 渲染 Markdown
     let renderTimeout;
     function renderMarkdown() {
@@ -400,7 +407,7 @@
 
       section.innerHTML = `
         <div class="new-comment-form">
-          <div class="comment-quote">"${text}"</div>
+          <div class="comment-quote">"${escapeHtml(text)}"</div>
           <textarea id="new-comment-body" placeholder="输入评论内容..."></textarea>
           <button onclick="saveNewComment()">保存评论</button>
         </div>
@@ -461,16 +468,16 @@
         const commentsHTML = thread.comments.map(comment => `
           <div class="comment-item">
             <div class="comment-meta">
-              <strong>${comment.author}</strong> ·
+              <strong>${escapeHtml(comment.author)}</strong> ·
               ${new Date(comment.createdAt).toLocaleString('zh-CN')}
             </div>
-            <div class="comment-body">${comment.body}</div>
+            <div class="comment-body">${escapeHtml(comment.body)}</div>
           </div>
         `).join('');
 
         return `
           <div class="comment-thread">
-            <div class="comment-quote">"${thread.anchor.exact}"</div>
+            <div class="comment-quote">"${escapeHtml(thread.anchor.exact)}"</div>
             ${commentsHTML}
           </div>
         `;
