@@ -282,12 +282,14 @@
   <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 
   <script>
-    // 初始化 Mermaid
+    // 初始化 Mermaid（配置安全级别防止 XSS）
     mermaid.initialize({
       startOnLoad: false,
-      theme: 'default'
+      theme: 'default',
+      securityLevel: 'strict'  // 启用严格安全模式
     });
 
     // 初始化 markdown-it 并配置代码高亮
@@ -296,25 +298,32 @@
       linkify: true,
       typographer: true,
       highlight: function (str, lang) {
+        // 使用 window.markdownit.utils 避免循环依赖（不依赖外部 md 变量）
+        const escapeHtml = window.markdownit().utils.escapeHtml;
+
         // mermaid 块不高亮，保留原文 + language-mermaid 类，供渲染后替换
         if (lang === 'mermaid') {
-          return '<pre><code class="language-mermaid">' + md.utils.escapeHtml(str) + '</code></pre>';
+          return '<pre><code class="language-mermaid">' + escapeHtml(str) + '</code></pre>';
         }
         if (lang && hljs.getLanguage(lang)) {
           try {
-            return '<pre><code class="hljs language-' + lang + '">' +
+            // 转义 lang 参数防止属性注入
+            const safeLang = escapeHtml(lang);
+            return '<pre><code class="hljs language-' + safeLang + '">' +
                    hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
                    '</code></pre>';
           } catch (__) {}
         }
-        return '<pre><code class="hljs">' + md.utils.escapeHtml(str) + '</code></pre>';
+        return '<pre><code class="hljs">' + escapeHtml(str) + '</code></pre>';
       }
     });
 
-    let mermaidCounter = 0;
+    // 使用时间戳保证 ID 全局唯一，避免多次渲染时 ID 冲突
+    let renderSessionId = Date.now();
 
     async function renderMarkdown() {
       const source = document.getElementById('editor').value;
+      const sessionId = renderSessionId++;  // 每次渲染递增会话 ID
 
       // 渲染 Markdown（mermaid 代码块会先渲染成普通 <pre><code> 块）
       const html = md.render(source);
@@ -322,23 +331,48 @@
       preview.innerHTML = html;
 
       // 渲染后在 DOM 中查找 mermaid 代码块并替换为图表
-      // 注意：因 html:false，无法用占位符 div，故采用渲染后替换策略
-      const codeBlocks = preview.querySelectorAll('pre code.language-mermaid');
-      for (const codeEl of codeBlocks) {
+      // 使用 Promise.allSettled 并行渲染所有图表，提升性能
+      const codeBlocks = Array.from(preview.querySelectorAll('pre code.language-mermaid'));
+
+      const renderTasks = codeBlocks.map(async (codeEl, index) => {
         const code = codeEl.textContent.trim();
-        const id = `mermaid-svg-${mermaidCounter++}`;
+        const id = `mermaid-${sessionId}-${index}`;  // 唯一 ID：会话ID + 索引
         const container = document.createElement('div');
         container.className = 'mermaid';
+
         try {
           const { svg } = await mermaid.render(id, code);
-          container.innerHTML = svg;
+          // 使用 DOMPurify 清理 SVG 防止 XSS
+          container.innerHTML = DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true, svgFilters: true }
+          });
         } catch (err) {
-          container.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${err.message}</pre>`;
+          // 转义错误消息防止 HTML 注入
+          const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+          };
+          container.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${escapeHtml(err.message)}</pre>`;
         }
-        // 用图表容器替换原始的 <pre> 元素
-        const preEl = codeEl.closest('pre');
-        preEl.replaceWith(container);
-      }
+
+        // 返回替换操作的信息
+        return { codeEl, container };
+      });
+
+      // 等待所有图表并行渲染完成
+      const results = await Promise.allSettled(renderTasks);
+
+      // 按原始顺序替换 DOM 元素
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { codeEl, container } = result.value;
+          const preEl = codeEl.closest('pre');
+          if (preEl) {  // 防御性检查
+            preEl.replaceWith(container);
+          }
+        }
+      });
     }
 
     async function loadTestDoc() {

@@ -287,14 +287,19 @@
   <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script type="module">
     // 使用 esm.sh：自动解析 CodeMirror 的裸模块依赖图（jsdelivr 的 /npm/ 路径无法解析）
     import { EditorView, basicSetup } from 'https://esm.sh/codemirror@6.0.1';
     import { markdown } from 'https://esm.sh/@codemirror/lang-markdown@6';
     import { EditorState } from 'https://esm.sh/@codemirror/state@6';
 
-    // 初始化 Mermaid
-    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+    // 初始化 Mermaid（配置安全级别防止 XSS）
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'strict'
+    });
 
     // 初始化 markdown-it
     const md = window.markdownit({
@@ -302,25 +307,30 @@
       linkify: true,
       typographer: true,
       highlight: function (str, lang) {
+        // 使用 window.markdownit.utils 避免循环依赖
+        const escapeHtml = window.markdownit().utils.escapeHtml;
+
         // mermaid 块不高亮，保留原文 + language-mermaid 类，供渲染后替换
         if (lang === 'mermaid') {
-          return '<pre><code class="language-mermaid">' + md.utils.escapeHtml(str) + '</code></pre>';
+          return '<pre><code class="language-mermaid">' + escapeHtml(str) + '</code></pre>';
         }
         if (lang && hljs.getLanguage(lang)) {
           try {
-            return '<pre><code class="hljs language-' + lang + '">' +
+            // 转义 lang 参数防止属性注入
+            const safeLang = escapeHtml(lang);
+            return '<pre><code class="hljs language-' + safeLang + '">' +
                    hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
                    '</code></pre>';
           } catch (__) {}
         }
-        return '<pre><code class="hljs">' + md.utils.escapeHtml(str) + '</code></pre>';
+        return '<pre><code class="hljs">' + escapeHtml(str) + '</code></pre>';
       }
     });
 
     // 初始化 CodeMirror 6
     let editorView;
     let currentFileHandle = null;
-    let mermaidCounter = 0;
+    let renderSessionId = Date.now();
 
     async function initEditor(initialContent = '') {
       const state = EditorState.create({
@@ -353,7 +363,7 @@
       if (!editorView) return;
 
       const source = editorView.state.doc.toString();
-      mermaidCounter = 0;
+      const sessionId = renderSessionId++;
 
       // 渲染 Markdown（mermaid 代码块先渲染成普通 <pre><code> 块）
       const html = md.render(source);
@@ -361,21 +371,47 @@
       preview.innerHTML = html;
 
       // 渲染后在 DOM 中查找 mermaid 代码块并替换为图表
-      // 注意：因 html:false，无法用占位符 div，故采用渲染后替换策略
-      const codeBlocks = preview.querySelectorAll('pre code.language-mermaid');
-      for (const codeEl of codeBlocks) {
+      // 使用 Promise.allSettled 并行渲染所有图表
+      const codeBlocks = Array.from(preview.querySelectorAll('pre code.language-mermaid'));
+
+      const renderTasks = codeBlocks.map(async (codeEl, index) => {
         const code = codeEl.textContent.trim();
-        const id = `mermaid-svg-${mermaidCounter++}`;
+        const id = `mermaid-${sessionId}-${index}`;
         const container = document.createElement('div');
         container.className = 'mermaid';
+
         try {
           const { svg } = await mermaid.render(id, code);
-          container.innerHTML = svg;
+          // 使用 DOMPurify 清理 SVG 防止 XSS
+          container.innerHTML = DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true, svgFilters: true }
+          });
         } catch (err) {
-          container.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${err.message}</pre>`;
+          // 转义错误消息防止 HTML 注入
+          const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+          };
+          container.innerHTML = `<pre style="color: red;">Mermaid 渲染错误:\n${escapeHtml(err.message)}</pre>`;
         }
-        codeEl.closest('pre').replaceWith(container);
-      }
+
+        return { codeEl, container };
+      });
+
+      // 等待所有图表并行渲染完成
+      const results = await Promise.allSettled(renderTasks);
+
+      // 按原始顺序替换 DOM 元素
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { codeEl, container } = result.value;
+          const preEl = codeEl.closest('pre');
+          if (preEl) {
+            preEl.replaceWith(container);
+          }
+        }
+      });
     }
 
     // 模式切换
