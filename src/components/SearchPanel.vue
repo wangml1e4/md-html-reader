@@ -164,6 +164,7 @@ const isSearching = ref(false)
 
 const fileResults = ref<any[]>([])
 const contentResults = ref<any[]>([])
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // 监听显示状态，自动聚焦
 watch(() => props.show, (show) => {
@@ -178,8 +179,8 @@ watch(() => props.show, (show) => {
   }
 })
 
-// 监听查询变化，执行搜索
-watch(query, async (newQuery) => {
+// 监听查询变化，执行防抖搜索
+watch(query, (newQuery) => {
   if (!newQuery || !props.workspacePath) {
     fileResults.value = []
     contentResults.value = []
@@ -188,12 +189,20 @@ watch(query, async (newQuery) => {
 
   selectedIndex.value = 0
 
-  if (props.mode === 'files') {
-    await searchFiles(newQuery)
-  } else {
-    await searchContent(newQuery)
+  // 清除之前的定时器
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
   }
-}, { debounce: 300 })
+
+  // 300ms 防抖
+  debounceTimer = setTimeout(async () => {
+    if (props.mode === 'files') {
+      await searchFiles(newQuery)
+    } else {
+      await searchContent(newQuery)
+    }
+  }, 300)
+})
 
 async function searchFiles(q: string) {
   try {

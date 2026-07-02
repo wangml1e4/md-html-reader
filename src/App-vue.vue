@@ -46,7 +46,11 @@
         v-if="workspace.currentFile && comments.list.length > 0"
         class="w-80 bg-white border-l border-gray-200 overflow-auto"
       >
-        <CommentSidebar :comments="comments.list" />
+        <CommentSidebar
+          :comments="comments.list"
+          @resolve="handleResolveComment"
+          @delete="handleDeleteComment"
+        />
       </aside>
     </main>
   </div>
@@ -104,6 +108,22 @@ async function handleCreateComment(anchor: any, content: string) {
     console.log('评论创建成功')
   } catch (error) {
     console.error('创建评论失败:', error)
+  }
+}
+
+async function handleResolveComment(commentId: string) {
+  try {
+    await comments.updateCommentStatus(commentId, 'resolved')
+  } catch (error) {
+    console.error('解决评论失败:', error)
+  }
+}
+
+async function handleDeleteComment(commentId: string) {
+  try {
+    await comments.deleteComment(commentId)
+  } catch (error) {
+    console.error('删除评论失败:', error)
   }
 }
 </script>

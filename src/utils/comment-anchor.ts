@@ -98,8 +98,13 @@ export function relocateAnchor(
  * 提取锚点核心文本（去除前后文）
  */
 function extractCoreText(quote: string, length: number): string {
+  // 如果 quote 长度不足 50 字符，直接返回全部内容
+  if (quote.length < 50) {
+    return quote
+  }
+
   const start = 50 // 跳过前 50 字符
-  const end = start + length
+  const end = Math.min(start + length, quote.length) // 防止超出边界
   return quote.substring(start, end)
 }
 

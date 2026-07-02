@@ -19,13 +19,18 @@ export interface Comment {
 export const useCommentsStore = defineStore('comments', () => {
   const list = ref<Comment[]>([])
   const currentFileHash = ref<string | null>(null)
+  const currentFilePath = ref<string | null>(null)
 
   async function loadComments(filePath: string) {
     try {
       const hash = await invoke<string>('calculate_file_hash', { path: filePath })
       currentFileHash.value = hash
+      currentFilePath.value = filePath
 
-      const comments = await invoke<Comment[]>('load_comments', { fileHash: hash })
+      const comments = await invoke<Comment[]>('load_comments', {
+        fileHash: hash,
+        filePath: filePath
+      })
       list.value = comments
     } catch (error) {
       console.error('加载评论失败:', error)
@@ -44,6 +49,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
       await invoke('save_comment', {
         fileHash: currentFileHash.value,
+        filePath: currentFilePath.value,
         comment: newComment,
       })
 
@@ -59,6 +65,7 @@ export const useCommentsStore = defineStore('comments', () => {
     try {
       await invoke('delete_comment', {
         fileHash: currentFileHash.value,
+        filePath: currentFilePath.value,
         commentId,
       })
 
@@ -79,6 +86,7 @@ export const useCommentsStore = defineStore('comments', () => {
     try {
       await invoke('update_comment', {
         fileHash: currentFileHash.value,
+        filePath: currentFilePath.value,
         comment,
       })
     } catch (error) {

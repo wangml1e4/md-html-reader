@@ -155,6 +155,24 @@ pub fn export_as_html(
     output_path: String,
     css_content: Option<String>,
 ) -> Result<(), String> {
+    use std::path::Path;
+
+    // 验证输出路径安全性
+    let output_path_obj = Path::new(&output_path);
+
+    // 检查路径是否包含危险的遍历操作
+    if output_path.contains("..") {
+        return Err("输出路径不能包含 '..'".to_string());
+    }
+
+    // 确保输出路径是绝对路径或在安全目录内
+    if !output_path_obj.is_absolute() {
+        return Err("输出路径必须是绝对路径".to_string());
+    }
+
+    // 可选：限制只能写入特定目录（如用户文档目录）
+    // 这里作为示例，可以根据需求调整
+
     let markdown_content = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
 
     // 简单的 HTML 模板（前端会用 markdown-it 渲染）
