@@ -473,12 +473,13 @@ ${html}
     window.addEventListener('load', () => {
       loadTestDoc();
 
-      // 初始化翻译（使用 Chrome 内置 API，如果不支持会自动提示）
+      // 初始化翻译（默认使用 Ollama，快速查看模式）
       translationFeature = initTranslation('#preview', {
-        service: 'chrome-builtin'  // 或 'baidu' / 'ollama'
+        service: 'ollama',      // 或 'tencent'
+        quickView: true         // 选中后直接翻译，无需点击按钮
       });
 
-      console.log('✓ 翻译功能已启用：选中预览区文本即可翻译');
+      console.log('✓ 翻译功能已启用：选中预览区文本即可翻译（快速查看模式）');
     });
   </script>
 </body>

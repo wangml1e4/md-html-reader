@@ -20,12 +20,14 @@ class TranslationFeature {
 
     // 配置：选择翻译服务
     this.config = {
-      service: 'chrome-builtin',  // 'chrome-builtin' | 'baidu' | 'ollama'
+      service: 'ollama',  // 'ollama' | 'tencent'
+      quickView: true,    // 选中后快速查看（无需点击按钮）
 
-      // 百度翻译配置（需要替换）
-      baidu: {
-        appid: 'YOUR_APP_ID',
-        key: 'YOUR_SECRET_KEY'
+      // 腾讯翻译配置（需要替换）
+      tencent: {
+        secretId: 'YOUR_SECRET_ID',
+        secretKey: 'YOUR_SECRET_KEY',
+        region: 'ap-beijing'  // 可选：ap-shanghai, ap-guangzhou
       },
 
       // Ollama 配置
@@ -64,13 +66,20 @@ class TranslationFeature {
     const selection = window.getSelection();
     const text = selection.toString().trim();
 
-    // 移除旧工具提示
+    // 移除旧工具提示和结果卡片
     this.hideTooltip();
+    this.hideResultCard();
 
     // 检查选中文本长度
     if (text.length > 0 && text.length < 5000) {
       this.currentSelection = text;
-      this.showTooltip(event.pageX, event.pageY);
+
+      // 快速查看模式：直接翻译，不显示中间按钮
+      if (this.config.quickView) {
+        this.translateSelection();
+      } else {
+        this.showTooltip(event.pageX, event.pageY);
+      }
     }
   }
 
@@ -131,84 +140,88 @@ class TranslationFeature {
   async translate(text) {
     const service = this.config.service;
 
-    if (service === 'chrome-builtin') {
-      return await this.translateWithChrome(text);
-    } else if (service === 'baidu') {
-      return await this.translateWithBaidu(text);
+    if (service === 'tencent') {
+      return await this.translateWithTencent(text);
     } else if (service === 'ollama') {
       return await this.translateWithOllama(text);
     } else {
-      throw new Error('未配置翻译服务');
+      throw new Error('未配置翻译服务（支持：tencent / ollama）');
     }
   }
 
-  async translateWithChrome(text) {
-    if (!window.translation) {
-      throw new Error('浏览器不支持 Translation API（需要 Chrome 130+）');
-    }
-
-    // 检测语言
-    const detector = await window.translation.createDetector();
-    const results = await detector.detect(text);
-    const detectedLang = results[0]?.detectedLanguage || 'zh';
-
-    // 确定目标语言
-    const targetLang = detectedLang === 'zh' ? 'en' : 'zh';
-
-    // 创建翻译器
-    const translator = await window.translation.createTranslator({
-      sourceLanguage: detectedLang,
-      targetLanguage: targetLang
-    });
-
-    const result = await translator.translate(text);
-
-    return {
-      original: text,
-      translated: result,
-      sourceLang: detectedLang,
-      targetLang: targetLang
-    };
-  }
-
-  async translateWithBaidu(text) {
+  async translateWithTencent(text) {
     // 检测是否为中文
     const isChinese = /[一-龥]/.test(text);
-    const from = isChinese ? 'zh' : 'en';
-    const to = isChinese ? 'en' : 'zh';
+    const source = isChinese ? 'zh' : 'en';
+    const target = isChinese ? 'en' : 'zh';
 
-    const { appid, key } = this.config.baidu;
-    const salt = Date.now();
+    const { secretId, secretKey, region = 'ap-beijing' } = this.config.tencent;
 
-    // 生成签名（需要引入 md5 库或使用 Web Crypto API）
-    const signStr = appid + text + salt + key;
-    const sign = await this.md5(signStr);
+    // 腾讯云 API v3 签名
+    const endpoint = 'tmt.tencentcloudapi.com';
+    const service = 'tmt';
+    const version = '2018-03-21';
+    const action = 'TextTranslate';
+    const timestamp = Math.floor(Date.now() / 1000);
+    const date = new Date(timestamp * 1000).toISOString().split('T')[0];
 
-    const params = new URLSearchParams({
-      q: text,
-      from,
-      to,
-      appid,
-      salt,
-      sign
-    });
+    // 请求参数
+    const params = {
+      SourceText: text,
+      Source: source,
+      Target: target,
+      ProjectId: 0
+    };
 
-    const response = await fetch('https://fanyi-api.baidu.com/api/trans/vip/translate', {
+    // 构造规范请求串
+    const payload = JSON.stringify(params);
+    const hashedPayload = await this.sha256Hex(payload);
+
+    const canonicalHeaders = `content-type:application/json\nhost:${endpoint}\n`;
+    const signedHeaders = 'content-type;host';
+    const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${hashedPayload}`;
+
+    // 构造待签名字符串
+    const algorithm = 'TC3-HMAC-SHA256';
+    const hashedCanonicalRequest = await this.sha256Hex(canonicalRequest);
+    const credentialScope = `${date}/${service}/tc3_request`;
+    const stringToSign = `${algorithm}\n${timestamp}\n${credentialScope}\n${hashedCanonicalRequest}`;
+
+    // 计算签名
+    const secretDate = await this.hmacSha256('TC3' + secretKey, date);
+    const secretService = await this.hmacSha256(secretDate, service);
+    const secretSigning = await this.hmacSha256(secretService, 'tc3_request');
+    const signature = await this.hmacSha256Hex(secretSigning, stringToSign);
+
+    // 构造 Authorization 头
+    const authorization = `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    // 发送请求
+    const response = await fetch(`https://${endpoint}`, {
       method: 'POST',
-      body: params
+      headers: {
+        'Content-Type': 'application/json',
+        'Host': endpoint,
+        'X-TC-Action': action,
+        'X-TC-Version': version,
+        'X-TC-Timestamp': timestamp.toString(),
+        'X-TC-Region': region,
+        'Authorization': authorization
+      },
+      body: payload
     });
 
     const data = await response.json();
 
-    if (data.error_code) {
-      throw new Error(`百度翻译错误：${data.error_msg}`);
+    if (data.Response.Error) {
+      throw new Error(`腾讯翻译错误：${data.Response.Error.Message}`);
     }
 
     return {
       original: text,
-      translated: data.trans_result[0].dst,
-      sourceLang: from,
-      targetLang: to
+      translated: data.Response.TargetText,
+      sourceLang: source,
+      targetLang: target
     };
   }
 
@@ -474,13 +487,35 @@ class TranslationFeature {
     return div.innerHTML;
   }
 
-  // 简单的 MD5 实现（用于百度翻译签名）
-  async md5(string) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(string);
-    const hashBuffer = await crypto.subtle.digest('MD5', data);
+  // 腾讯云签名相关工具函数
+  async sha256Hex(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async hmacSha256(key, message) {
+    const keyBuffer = typeof key === 'string'
+      ? new TextEncoder().encode(key)
+      : key;
+    const msgBuffer = new TextEncoder().encode(message);
+
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyBuffer,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
+    return new Uint8Array(signature);
+  }
+
+  async hmacSha256Hex(key, message) {
+    const signature = await this.hmacSha256(key, message);
+    return Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 }
 
@@ -490,7 +525,8 @@ function initTranslation(previewSelector = '#preview', config = {}) {
 
   // 允许外部配置覆盖
   if (config.service) translation.config.service = config.service;
-  if (config.baidu) translation.config.baidu = { ...translation.config.baidu, ...config.baidu };
+  if (config.quickView !== undefined) translation.config.quickView = config.quickView;
+  if (config.tencent) translation.config.tencent = { ...translation.config.tencent, ...config.tencent };
   if (config.ollama) translation.config.ollama = { ...translation.config.ollama, ...config.ollama };
 
   return translation;
