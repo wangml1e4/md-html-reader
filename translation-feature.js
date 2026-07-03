@@ -33,7 +33,7 @@ class TranslationFeature {
       // Ollama 配置
       ollama: {
         endpoint: 'http://localhost:11434/api/generate',
-        model: 'llama3.2:3b'
+        model: 'qwen3.5:2b'
       }
     };
 

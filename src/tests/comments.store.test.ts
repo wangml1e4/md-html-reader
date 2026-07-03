@@ -88,6 +88,24 @@ describe('comments store', () => {
       expect(store.list[0].content).toBe('New comment')
     })
 
+    it('应该在保存失败时抛出错误且不修改状态', async () => {
+      const store = useCommentsStore()
+      store.currentFileHash = 'abc123'
+      store.currentFilePath = '/path/to/file.md'
+
+      vi.mocked(invoke).mockRejectedValue(new Error('Save failed'))
+
+      const comment = {
+        fileHash: 'abc123',
+        anchor: { quote: 'test', offset: 0, length: 4 },
+        content: 'New comment',
+        status: 'open' as const,
+      }
+
+      await expect(store.saveComment(comment)).rejects.toThrow('Save failed')
+      expect(store.list).toHaveLength(0) // 状态未被修改
+    })
+
     it('应该生成唯一 ID 和时间戳', async () => {
       const store = useCommentsStore()
       store.currentFileHash = 'abc123'
@@ -162,6 +180,8 @@ describe('comments store', () => {
 
       vi.mocked(invoke).mockResolvedValue(undefined)
 
+      // 等待一小段时间确保时间戳不同
+      await new Promise(resolve => setTimeout(resolve, 10))
       await store.updateCommentStatus('comment-1', 'resolved')
 
       // 验证调用参数包含 filePath（bug #4 修复）
@@ -175,7 +195,7 @@ describe('comments store', () => {
       })
 
       expect(store.list[0].status).toBe('resolved')
-      expect(store.list[0].updatedAt).toBeGreaterThan(now)
+      expect(store.list[0].updatedAt).toBeGreaterThanOrEqual(now + 10)
     })
 
     it('应该忽略不存在的评论', async () => {

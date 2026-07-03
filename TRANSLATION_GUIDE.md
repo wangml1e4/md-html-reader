@@ -58,14 +58,15 @@
      service: 'ollama',
      ollama: {
        endpoint: 'http://localhost:11434/api/generate',
-       model: 'llama3.2:3b'
+       model: 'qwen3.5:2b'
      }
    });
    ```
 
 **模型选择建议**：
-- `llama3.2:3b` - 推荐，速度快，质量好（2GB）
-- `qwen2:7b` - 中文能力强（4.4GB）
+- `qwen3.5:2b` - 推荐，速度快，中文能力强（约 1.5GB）
+- `llama3.2:3b` - 通用翻译，质量好（2GB）
+- `qwen2:7b` - 中文能力强，体积较大（4.4GB）
 - `mistral:7b` - 通用翻译（4.1GB）
 
 ---
