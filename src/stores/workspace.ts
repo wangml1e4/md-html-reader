@@ -7,6 +7,7 @@ export interface FileItem {
   path: string
   type: 'file' | 'directory'
   extension?: string
+  title?: string
   children?: FileItem[]
 }
 
@@ -17,30 +18,38 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function loadFolder(path: string) {
     try {
-      folderPath.value = path
       const result = await invoke<FileItem[]>('list_files', { path })
+      folderPath.value = path
       files.value = result
     } catch (error) {
       console.error('加载文件夹失败:', error)
-      throw error
+      folderPath.value = null
+      files.value = []
     }
   }
 
   async function openFile(path: string) {
+    if (!folderPath.value) return
+
     try {
-      const content = await invoke<string>('read_file', { path })
+      const content = await invoke<string>('read_file', {
+        workspacePath: folderPath.value,
+        path,
+      })
       currentFile.value = { path, content }
     } catch (error) {
       console.error('打开文件失败:', error)
-      throw error
+      currentFile.value = null
     }
   }
 
   async function saveCurrentFile(content: string) {
     if (!currentFile.value) return
+    if (!folderPath.value) throw new Error('未加载工作区')
 
     try {
       await invoke('write_file', {
+        workspacePath: folderPath.value,
         path: currentFile.value.path,
         content,
       })

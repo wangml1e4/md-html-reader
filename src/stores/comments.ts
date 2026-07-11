@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { relocateAnchor } from '../utils/comment-anchor'
 
 export interface Comment {
   id: string
@@ -12,33 +13,79 @@ export interface Comment {
   }
   content: string
   status: 'open' | 'resolved'
+  confidence?: number
   createdAt: number
   updatedAt: number
 }
 
 export const useCommentsStore = defineStore('comments', () => {
   const list = ref<Comment[]>([])
+  const currentWorkspacePath = ref<string | null>(null)
   const currentFileHash = ref<string | null>(null)
   const currentFilePath = ref<string | null>(null)
 
-  async function loadComments(filePath: string) {
+  async function loadComments(workspacePath: string, filePath: string, currentContent?: string) {
     try {
-      const hash = await invoke<string>('calculate_file_hash', { path: filePath })
+      const hash = await invoke<string>('calculate_file_hash', {
+        workspacePath,
+        path: filePath,
+      })
+      currentWorkspacePath.value = workspacePath
       currentFileHash.value = hash
       currentFilePath.value = filePath
 
       const comments = await invoke<Comment[]>('load_comments', {
+        workspacePath,
         fileHash: hash,
         filePath: filePath
       })
-      list.value = comments
+      list.value = currentContent
+        ? relocateComments(comments, currentContent)
+        : [...comments]
     } catch (error) {
       console.error('加载评论失败:', error)
       list.value = []
+      currentWorkspacePath.value = null
+      currentFileHash.value = null
+      currentFilePath.value = null
     }
   }
 
+  function relocateComments(comments: Comment[], currentContent: string) {
+    return comments.map(comment => {
+      const result = relocateAnchor(comment.anchor, currentContent)
+
+      return {
+        ...comment,
+        confidence: result.confidence,
+        anchor: {
+          ...comment.anchor,
+          offset: result.newOffset,
+        },
+      }
+    })
+  }
+
+  async function refreshCurrentFileHash(
+    workspacePath = currentWorkspacePath.value,
+    filePath = currentFilePath.value,
+  ) {
+    if (!workspacePath || !filePath) return
+
+    const hash = await invoke<string>('calculate_file_hash', {
+      workspacePath,
+      path: filePath,
+    })
+    currentWorkspacePath.value = workspacePath
+    currentFileHash.value = hash
+    currentFilePath.value = filePath
+  }
+
   async function saveComment(comment: Omit<Comment, 'id' | 'createdAt' | 'updatedAt'>) {
+    if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
+      throw new Error('未加载评论文件')
+    }
+
     try {
       const newComment: Comment = {
         ...comment,
@@ -48,6 +95,7 @@ export const useCommentsStore = defineStore('comments', () => {
       }
 
       await invoke('save_comment', {
+        workspacePath: currentWorkspacePath.value,
         fileHash: currentFileHash.value,
         filePath: currentFilePath.value,
         comment: newComment,
@@ -62,8 +110,13 @@ export const useCommentsStore = defineStore('comments', () => {
   }
 
   async function deleteComment(commentId: string) {
+    if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
+      throw new Error('未加载评论文件')
+    }
+
     try {
       await invoke('delete_comment', {
+        workspacePath: currentWorkspacePath.value,
         fileHash: currentFileHash.value,
         filePath: currentFilePath.value,
         commentId,
@@ -80,11 +133,16 @@ export const useCommentsStore = defineStore('comments', () => {
     const comment = list.value.find(c => c.id === commentId)
     if (!comment) return
 
+    if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
+      throw new Error('未加载评论文件')
+    }
+
     comment.status = status
     comment.updatedAt = Date.now()
 
     try {
       await invoke('update_comment', {
+        workspacePath: currentWorkspacePath.value,
         fileHash: currentFileHash.value,
         filePath: currentFilePath.value,
         comment,
@@ -97,8 +155,11 @@ export const useCommentsStore = defineStore('comments', () => {
 
   return {
     list,
+    currentWorkspacePath,
     currentFileHash,
+    currentFilePath,
     loadComments,
+    refreshCurrentFileHash,
     saveComment,
     deleteComment,
     updateCommentStatus,

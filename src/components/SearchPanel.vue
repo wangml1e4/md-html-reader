@@ -43,7 +43,13 @@
               <span class="text-lg">{{ getFileIcon(result.name) }}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium text-gray-800 truncate">
-                  {{ highlightMatch(result.name, query) }}
+                  <template
+                    v-for="(segment, segmentIndex) in getQuerySegments(result.name, query)"
+                    :key="segmentIndex"
+                  >
+                    <mark v-if="segment.highlight" class="bg-yellow-200">{{ segment.text }}</mark>
+                    <span v-else>{{ segment.text }}</span>
+                  </template>
                 </div>
                 <div class="text-xs text-gray-500 truncate">
                   {{ result.directory }}
@@ -117,7 +123,13 @@
                   <span class="text-xs text-gray-400">第 {{ result.line_number }} 行</span>
                 </div>
                 <div class="text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded">
-                  {{ highlightContent(result.line_content, result.match_start, result.match_end) }}
+                  <template
+                    v-for="(segment, segmentIndex) in getRangeSegments(result.line_content, result.match_start, result.match_end)"
+                    :key="segmentIndex"
+                  >
+                    <mark v-if="segment.highlight" class="bg-yellow-200">{{ segment.text }}</mark>
+                    <span v-else>{{ segment.text }}</span>
+                  </template>
                 </div>
               </div>
             </div>
@@ -165,6 +177,11 @@ const isSearching = ref(false)
 const fileResults = ref<any[]>([])
 const contentResults = ref<any[]>([])
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+interface HighlightSegment {
+  text: string
+  highlight: boolean
+}
 
 // 监听显示状态，自动聚焦
 watch(() => props.show, (show) => {
@@ -272,19 +289,22 @@ function getFileIcon(fileName: string): string {
   return '📄'
 }
 
-function highlightMatch(text: string, query: string): string {
-  if (!query) return text
+function getQuerySegments(text: string, query: string): HighlightSegment[] {
+  if (!query) return [{ text, highlight: false }]
   const index = text.toLowerCase().indexOf(query.toLowerCase())
-  if (index === -1) return text
+  if (index === -1) return [{ text, highlight: false }]
 
-  return text.substring(0, index) +
-    `<mark class="bg-yellow-200">${text.substring(index, index + query.length)}</mark>` +
-    text.substring(index + query.length)
+  return getRangeSegments(text, index, index + query.length)
 }
 
-function highlightContent(content: string, start: number, end: number): string {
-  return content.substring(0, start) +
-    `<mark class="bg-yellow-200">${content.substring(start, end)}</mark>` +
-    content.substring(end)
+function getRangeSegments(content: string, start: number, end: number): HighlightSegment[] {
+  const safeStart = Math.max(0, Math.min(start, content.length))
+  const safeEnd = Math.max(safeStart, Math.min(end, content.length))
+
+  return [
+    { text: content.substring(0, safeStart), highlight: false },
+    { text: content.substring(safeStart, safeEnd), highlight: true },
+    { text: content.substring(safeEnd), highlight: false },
+  ].filter(segment => segment.text.length > 0)
 }
 </script>

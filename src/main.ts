@@ -1,8 +1,14 @@
-import './app.css'
-import App from './App.svelte'
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import App from './App.vue'
+import './styles/main.css'
 
-const app = new App({
-  target: document.getElementById('app')!,
-})
+if (import.meta.env.MODE === 'e2e') {
+  void import('@wdio/tauri-plugin')
+}
 
-export default app
+const app = createApp(App)
+const pinia = createPinia()
+
+app.use(pinia)
+app.mount('#app')

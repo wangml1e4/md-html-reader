@@ -7,6 +7,10 @@ node_modules/
 # 构建产物
 dist/
 src-tauri/target/
+src-tauri/gen/
+
+# 迁移备份
+.svelte-backup/
 
 # 日志
 *.log

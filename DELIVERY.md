@@ -2,7 +2,7 @@
 
 **项目名称**：MD+HTML Reader 复刻版  
 **完成时间**：2026-06-30  
-**状态**：✅ MVP 完成，核心功能已实现
+**状态**：历史原型已完成，当前桌面主线验证中
 
 ---
 
@@ -11,7 +11,7 @@
 成功完成 **MD+HTML Reader 复刻版**的核心功能开发，通过 3 个可运行的 HTML 原型验证了完整的产品概念：
 
 1. **enhanced.html** - 功能完整的 Markdown 预览器
-2. **editor.html** - 集成 CodeMirror 6 的专业编辑器
+2. **editor.html** - 集成历史编辑器原型
 3. **comments.html** - 评论系统核心演示
 
 尽管遇到网络环境限制（npm 依赖安装受阻），通过采用 CDN 方案成功绕过障碍，按计划完成了阶段 0-3 的核心开发任务。
@@ -20,8 +20,8 @@
 
 ## 完成的功能
 
-### ✅ 阶段 0：项目脚手架（100%）
-- Tauri 2.x + Svelte 5 + TypeScript 项目结构
+### 阶段 0：项目脚手架（历史阶段）
+- Tauri 2.x + 早期前端框架 + TypeScript 项目结构
 - Rust 后端骨架（文件 IO 准备就绪）
 - 模块化架构（`src/lib/` 设计）
 - 锚点类型系统完整定义
@@ -29,7 +29,7 @@
 
 **提交**：`fcc3f30`
 
-### ✅ 阶段 1：只读预览（100%）
+### 阶段 1：只读预览（历史原型）
 **访问**：[enhanced.html](enhanced.html)
 
 **功能清单**：
@@ -43,11 +43,11 @@
 
 **提交**：`f681c0a`, `b4dfe20`
 
-### ✅ 阶段 2：Markdown 编辑（100%）
+### 阶段 2：Markdown 编辑（历史原型）
 **访问**：[editor.html](editor.html)
 
 **功能清单**：
-- ✅ CodeMirror 6 专业编辑器（语法高亮、代码补全）
+- ✅ 历史编辑器原型（语法高亮、代码补全）
 - ✅ 三种模式切换：预览/编辑/分屏
 - ✅ 文件保存（原子写入，保留 fileHandle）
 - ✅ 实时渲染（EditorView.updateListener）
@@ -84,14 +84,14 @@
 | markdown-it | 14 | Markdown 渲染 |
 | highlight.js | 11 | 代码高亮 |
 | Mermaid | 11 | 图表渲染 |
-| CodeMirror 6 | 6.x | 代码编辑器 |
+| 历史编辑器 | 6.x | 早期代码编辑器原型 |
 | CSS Custom Highlight API | Native | 评论高亮 |
 
 ### 规划实现（完整 Tauri 应用）
 | 技术 | 版本 | 状态 |
 |------|------|------|
 | Tauri | 2.3 | ✅ 配置就绪 |
-| Svelte | 5.0 | ✅ 配置就绪 |
+| 早期前端框架 | 5.0 | 历史配置 |
 | TypeScript | 5.7 | ✅ 配置就绪 |
 | Vite | 6.0 | ✅ 配置就绪 |
 | Rust | 1.96 | ✅ 后端骨架完成 |
@@ -117,7 +117,7 @@
 | 文件 | 说明 | 访问方式 |
 |------|------|----------|
 | `enhanced.html` | 完整预览器（代码高亮 + Mermaid） | 预览面板 |
-| `editor.html` | CodeMirror 6 编辑器（三模式切换） | 预览面板 |
+| `editor.html` | 历史编辑器（三模式切换） | 预览面板 |
 | `comments.html` | 评论系统演示（高亮 + 侧边栏） | 预览面板 |
 | `prototype.html` | 基础原型（已被 enhanced 替代） | 归档 |
 
@@ -172,12 +172,12 @@
 **操作步骤**：
 1. 打开 `editor.html`
 2. 工具栏切换：预览/编辑/分屏模式
-3. 编辑模式下使用 CodeMirror 6 专业编辑器
+3. 编辑模式下使用历史编辑器原型
 4. 点击「打开文件」加载 .md 文件
 5. 编辑后点击「保存」写回文件
 
 **亮点**：
-- CodeMirror 6 语法高亮
+- 历史编辑器语法高亮
 - 三种模式无缝切换
 - 文件保存（保留 fileHandle）
 - 实时预览同步
@@ -206,7 +206,7 @@
 ### 1. 绕过网络限制的 CDN 策略
 遇到 npm registry 403 Forbidden 问题后，快速转向 CDN 方案：
 - 所有依赖通过 jsDelivr CDN 加载
-- CodeMirror 6 使用 ESM 模块导入
+- 历史编辑器使用 ESM 模块导入
 - 零 npm 安装，直接可运行
 
 ### 2. CSS Custom Highlight API
@@ -257,7 +257,7 @@
 1. 修复 npm 依赖安装（清除代理/修复证书）
 2. 安装完整依赖（`pnpm install`）
 3. 启动 Tauri 开发环境（`pnpm tauri dev`）
-4. 将原型功能迁移到 Svelte 组件
+4. 将原型功能迁移到早期前端组件
 5. 打包 macOS 应用（`.dmg`）
 
 ### 中期（完善评论系统）
@@ -281,11 +281,11 @@
 
 ```
 62171d0 - Add project plan, gitignore, and Apple-style UI design system
-fcc3f30 - feat: 阶段 0 - Tauri + Svelte 项目脚手架
+fcc3f30 - feat: 阶段 0 - Tauri + 早期前端项目脚手架
 f681c0a - feat: 阶段 1 原型 - 基础 Markdown 预览功能
 b4dfe20 - feat: 阶段 1 完成 - 功能完整的预览器
 6e7630e - docs: 添加开发进度报告
-d9ffb71 - feat: 阶段 2 完成 - 集成 CodeMirror 6 编辑器
+d9ffb71 - feat: 阶段 2 完成 - 集成早期编辑器原型
 a99a10b - docs: 更新进度报告 - 阶段 2 完成
 276aea5 - feat: 阶段 3 原型 - 评论系统核心功能
 ```
@@ -315,7 +315,7 @@ a99a10b - docs: 更新进度报告 - 阶段 2 完成
 
 ---
 
-**项目状态**：✅ MVP 完成，可演示核心价值  
+**项目状态**：历史原型可演示核心价值，当前桌面主线验证中
 **下一里程碑**：解决依赖安装 → 打包 macOS 应用
 
 *报告生成时间：2026-06-30 21:50 CST*

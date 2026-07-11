@@ -53,9 +53,7 @@ export function relocateAnchor(
   // 策略 1：精确匹配 quote
   const exactMatch = newText.indexOf(anchor.quote)
   if (exactMatch !== -1) {
-    const offsetInQuote = anchor.quote.indexOf(
-      anchor.quote.substring(50, 50 + anchor.length)
-    )
+    const offsetInQuote = getCoreStart(anchor)
     return {
       newOffset: exactMatch + offsetInQuote,
       confidence: 1.0,
@@ -64,7 +62,7 @@ export function relocateAnchor(
   }
 
   // 策略 2：模糊匹配核心文本（去除前后各 50 字符）
-  const coreText = extractCoreText(anchor.quote, anchor.length)
+  const coreText = extractCoreText(anchor)
   const fuzzyMatch = fuzzySearch(coreText, newText)
 
   if (fuzzyMatch.confidence > 0.5) {
@@ -97,15 +95,21 @@ export function relocateAnchor(
 /**
  * 提取锚点核心文本（去除前后文）
  */
-function extractCoreText(quote: string, length: number): string {
+function extractCoreText(anchor: CommentAnchor): string {
+  const { quote, length } = anchor
+
   // 如果 quote 长度不足 50 字符，直接返回全部内容
   if (quote.length < 50) {
     return quote
   }
 
-  const start = 50 // 跳过前 50 字符
+  const start = getCoreStart(anchor)
   const end = Math.min(start + length, quote.length) // 防止超出边界
   return quote.substring(start, end)
+}
+
+function getCoreStart(anchor: CommentAnchor): number {
+  return Math.min(50, anchor.offset)
 }
 
 /**

@@ -278,7 +278,7 @@ document.querySelectorAll('#preview .mermaid svg').length  // 3
 ```
 
 ### editor.html 验证
-- ✅ CodeMirror 6 正常初始化
+- ✅ 历史编辑器正常初始化
 - ✅ 预览区渲染正常
 - ✅ 三模式切换正常
 
@@ -349,7 +349,7 @@ document.querySelectorAll('#preview .mermaid svg').length  // 3
 - [x] 错误消息转义
 - [x] lang 参数验证
 
-**核心任务完成度**：100%（所有立即和高优先级问题已修复）
+**核心任务完成度**：阶段性完成（立即和高优先级问题已处理，仍需回归验证）
 
 **整体完成度**：90%（9/10 问题已修复，1 个架构升级待后续实施）
 

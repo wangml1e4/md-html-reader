@@ -6,8 +6,10 @@ export default defineConfig({
   plugins: [vue()],
   test: {
     globals: true,
+    watch: false,
     environment: 'jsdom',
     setupFiles: './src/tests/setup.ts',
+    include: ['src/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -35,7 +35,7 @@
         <div v-else class="flex-1 overflow-hidden">
           <MilkdownEditor
             :file="workspace.currentFile"
-            @save="saveFile"
+            :save-content="saveFile"
             @createComment="handleCreateComment"
           />
         </div>
@@ -76,9 +76,8 @@ async function openFolder() {
       multiple: false,
     })
 
-    if (selected) {
-      const path = typeof selected === 'string' ? selected : selected.path
-      await workspace.loadFolder(path)
+    if (selected && typeof selected === 'string') {
+      await workspace.loadFolder(selected)
     }
   } catch (error) {
     console.error('打开文件夹失败:', error)
@@ -86,12 +85,17 @@ async function openFolder() {
 }
 
 async function openFile(filePath: string) {
+  if (!workspace.folderPath) return
   await workspace.openFile(filePath)
-  await comments.loadComments(filePath)
+  await comments.loadComments(workspace.folderPath, filePath, workspace.currentFile?.content)
 }
 
 async function saveFile(content: string) {
+  const filePath = workspace.currentFile?.path
   await workspace.saveCurrentFile(content)
+  if (workspace.folderPath && filePath) {
+    await comments.refreshCurrentFileHash(workspace.folderPath, filePath)
+  }
 }
 
 async function handleCreateComment(anchor: any, content: string) {

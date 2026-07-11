@@ -9,7 +9,7 @@
 ## 已完成
 
 ### ✅ 阶段 0 — 项目脚手架
-- [x] Tauri 2.x + Svelte 5 + TypeScript 项目结构
+- [x] Tauri 2.x + 早期前端框架 + TypeScript 项目结构（历史口径）
 - [x] Rust 后端骨架（`src-tauri/`）
 - [x] 前端模块化架构（`src/lib/`）
 - [x] 锚点类型系统定义（`anchorTypes.ts`）
@@ -66,7 +66,7 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 1. 修复 npm 访问（清除代理/修复证书）
 2. 安装完整依赖（`npm install` 或 `pnpm install`）
 3. 启动 Tauri 开发服务器（`npm run tauri dev`）
-4. 将原型功能迁移到 Svelte 组件
+4. 将原型功能迁移到早期前端组件
 5. 添加代码高亮（Shiki）+ Mermaid 图表
 
 ### 方案 B：继续扩展 CDN 原型（临时）
@@ -74,7 +74,7 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 1. 在原型中添加代码高亮（CDN: highlight.js）
 2. 在原型中添加 Mermaid 图表（CDN: mermaid.js）
 3. 用 Web API（File System Access API）模拟文件打开
-4. 实现阶段 2 的编辑器（CodeMirror 6 CDN 版本）
+4. 实现阶段 2 的历史编辑器（CDN 版本）
 
 **推荐方案 A**，因为：
 - Tauri 桌面应用是最终目标（原生文件访问、菜单、窗口管理）
@@ -111,8 +111,8 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 
 | 阶段 | 状态 | 完成度 |
 |------|------|--------|
-| 阶段 0：脚手架 | ✅ 完成 | 100% |
-| 阶段 1：只读预览 | ✅ 完成 | 100% |
+| 阶段 0：脚手架 | ✅ 完成 | 已完成 |
+| 阶段 1：只读预览 | ✅ 完成 | 已完成 |
 | 阶段 2：编辑功能 | 🔄 进行中 | 0% |
 | 阶段 3：评论系统 | ⏸️ 待开始 | 0% |
 | 阶段 4：打磨 | ⏸️ 待开始 | 0% |
@@ -127,7 +127,7 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 - ✅ Apple 风格 UI
 
 **阶段 2 待实现**：
-- [ ] CodeMirror 6 集成（高级编辑器）
+- [ ] 历史编辑器集成（高级编辑器）
 - [ ] 预览/编辑/分屏三种模式切换
 - [ ] 编辑↔预览滚动同步
 - [ ] 文件保存（原子写）
@@ -138,7 +138,7 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 **总结**：核心架构和类型系统已就绪，功能原型可验证。当前受网络环境限制无法安装完整依赖，需解决后继续推进。
 
 ### ✅ 阶段 2 — Markdown 编辑（已完成）
-- [x] CodeMirror 6 集成（专业编辑器，语法高亮）
+- [x] 历史编辑器集成（专业编辑器，语法高亮）
 - [x] 预览/编辑/分屏三种模式切换
 - [x] 文件保存（File System Access API，原子写入）
 - [x] 文件打开（保留 fileHandle）
@@ -150,4 +150,3 @@ npm ERR! 403 Forbidden - GET https://registry.npmjs.org/@tauri-apps/api
 **访问方式**：在预览面板打开 `editor.html`
 
 **阶段 3 下一步**：评论系统实现（核心技术挑战）
-

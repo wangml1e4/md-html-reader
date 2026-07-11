@@ -84,7 +84,7 @@
     await renderMarkdown(md, source, preview, getSessionId());
   }
 
-  // CodeMirror 初始化和其他功能保持不变
+  // 编辑器初始化和其他功能保持不变
 </script>
 ```
 

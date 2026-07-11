@@ -1,291 +1,178 @@
 # 测试指南
 
-## 🧪 测试框架
+本指南只描述当前主线：Vue + Milkdown + Tauri。历史 HTML 原型可以单独打开验证，但不作为桌面应用发布验收标准。
 
-项目使用 **Vitest** 作为测试框架，配合 Vue Test Utils 进行组件测试。
+## 当前验证命令
 
-### 技术栈
-- **Vitest**: 快速的单元测试框架（兼容 Vite）
-- **@vue/test-utils**: Vue 3 组件测试工具
-- **jsdom**: DOM 环境模拟
-- **@vitest/coverage-v8**: 代码覆盖率报告
+从仓库根目录执行：
 
----
+前置版本：Node.js 24+、pnpm 11.7.0、Rust 1.96+。仓库已包含 `.npmrc` 固定 npm registry，并在 `package.json` 通过 `packageManager` 固定 pnpm 版本。
 
-## 📦 安装依赖
+最新本地验证还覆盖了不含 `node_modules`、`dist` 和 `src-tauri/target` 的临时副本，用于模拟新用户首次安装、测试、构建和本地 DMG smoke。
 
 ```bash
-# 确保使用 Vue 版本的 package.json
-mv package.json package-svelte-backup.json
-mv package-vue.json package.json
-
-# 安装依赖
-npm install
+corepack enable
+corepack prepare pnpm@11.7.0 --activate
+CI=true pnpm install --frozen-lockfile
+pnpm test -- --run
+pnpm build
+(cd src-tauri && cargo test)
+pnpm run tauri:build
+pnpm run tauri:build:dmg
+pnpm run smoke:dmg
+pnpm run test:e2e
 ```
 
----
+命令覆盖范围：
 
-## 🚀 运行测试
+| 命令 | 验证范围 |
+|------|----------|
+| `CI=true pnpm install --frozen-lockfile` | 锁文件、依赖版本、pnpm 安装策略 |
+| `pnpm test -- --run` | 前端单元测试、store 测试、组件保存状态测试、搜索/导出入口测试 |
+| `pnpm build` | Vite 生产构建、前端资源输出到 `dist/` |
+| `(cd src-tauri && cargo test)` | Rust 命令和评论 sidecar 行为测试 |
+| `pnpm run tauri:build` | Tauri release 二进制和 macOS `.app` 产物 |
+| `pnpm run tauri:build:dmg` | headless macOS DMG 产物，包含 App 和 Applications 链接；App 做 ad-hoc 签名，未 Developer ID 签名、未公证 |
+| `pnpm run smoke:dmg` | 本地 macOS smoke：挂载 DMG、复制 App、校验签名、启动 App 进程并清理 |
+| `pnpm run release:notarize` | 正式发布路径：需要 Developer ID 证书和 notarytool keychain profile；执行签名、公证、staple 和验证 |
+| `pnpm run test:e2e` | WebdriverIO embedded provider 启动真实 Tauri WebView，覆盖核心窗口路径和新进程重开后的评论持久化 |
 
-### 运行所有测试
+## 自动化覆盖
+
+### 前端测试
+
+| 文件 | 覆盖点 |
+|------|--------|
+| `src/tests/comment-anchor.test.ts` | 锚点创建、精确重定位、模糊重定位、附近搜索、短文件边界 |
+| `src/tests/comments.store.test.ts` | 评论加载、保存、删除、状态更新、失败回滚和加载时锚点重定位 |
+| `src/tests/workspace.store.test.ts` | 文件夹加载、文件读取、文件写入和失败状态 |
+| `src/tests/milkdown-editor.save.test.ts` | 保存中状态、写盘成功后显示已保存、写盘失败不误报已保存 |
+| `src/tests/search-panel.test.ts` | 文件名搜索、内容搜索和打开搜索结果 |
+| `src/tests/app.shell.test.ts` | 主工具栏打开搜索面板、导出 HTML 调用 Tauri 命令 |
+| `src/tests/app.flow.test.ts` | App 级用户流：打开文件夹、打开文件、保存、评论、重开、搜索打开、导出 HTML |
+
+### Rust 测试
+
+| 测试 | 覆盖点 |
+|------|--------|
+| `comment_deserializes_from_frontend_camel_case` | 前端 `fileHash/createdAt/updatedAt` 能被 Rust 读取并按 camelCase 写出 |
+| `comment_deserializes_from_legacy_snake_case` | 旧 sidecar 中的 `file_hash/created_at/updated_at` 仍可读取 |
+| `comments_survive_content_hash_changes_for_same_path` | 同一路径内容变化后，评论仍可加载、更新、删除 |
+| `core_file_comment_search_export_path_works` | 文件夹扫描、读写、评论保存/重开、搜索、导出 HTML 的命令层路径 |
+
+### Tauri 窗口测试
+
+| 文件 | 覆盖点 |
+|------|--------|
+| `test/e2e/app.spec.ts` | 真实 Tauri WebView 加载、WDIO Tauri bridge、打开临时目录、打开 Markdown、设置编辑内容、保存写盘、添加评论、刷新后评论仍存在、文件名搜索、内容搜索、导出 HTML |
+| `test/e2e/reopen.spec.ts` | 第一轮 Tauri 进程创建评论，第二轮新 Tauri 进程打开同一临时目录并确认评论仍存在 |
+
+说明：窗口 E2E 使用 `e2e` 构建模式绕过原生目录选择和保存对话框，并通过测试专用钩子设置 Milkdown 当前内容；评论选区由程序化文本选择辅助。它验证真实 Tauri WebView、真实 Rust 命令、真实临时文件系统链路和新进程重开后的 sidecar 读取，但不替代原生系统对话框、真实键盘输入、手工鼠标选择和手工关闭重开操作验收。
+
+已尝试用 WebDriver actions、WebDriver 粘贴和 macOS System Events 替代编辑钩子。当前 embedded provider 对 WebView printable 输入不稳定，System Events 在当前机器缺少发送按键权限，因此真实键盘输入仍保留为人工验收项。
+
+WebdriverIO Tauri service 使用 embedded provider 时，日志里仍可能出现 `tauri-driver not found` 诊断错误；只要 spec summary 通过且命令退出码为 0，就不需要额外安装外部 `tauri-driver`。
+
+## 手工端到端验收清单
+
+当前已有真实 Tauri 窗口核心路径自动化。发布前仍至少手工执行一次并记录结果，重点覆盖自动化刻意绕开的原生交互：
+
+先生成验收工作区和结果模板：
+
 ```bash
-npm test
+pnpm run manual:prepare
+pnpm exec tauri dev
 ```
 
-### 监视模式（自动重新运行）
+`manual:prepare` 会在 `/tmp/markdown-html-manual-acceptance` 下创建可选目录、Markdown 样例和 `manual-acceptance-results.md`。实际验收结果只写入该结果模板；不要把未执行的步骤标为通过。
+
+1. 点击「打开文件夹」，选择脚本生成的 `workspace` 目录。
+2. 打开 `manual-e2e-note.md`，确认内容进入 Milkdown 编辑器。
+3. 修改正文并点击保存，确认 UI 只在写盘成功后显示保存状态，并检查磁盘文件内容。
+4. 选中文本并添加评论，确认右侧评论栏出现新评论。
+5. 关闭应用后重新打开同一目录和同一文件，确认评论仍存在。
+6. 修改文件内容后再次打开，确认评论没有因内容 hash 变化丢失。
+7. 验证文件名搜索和内容搜索路径。
+8. 验证导出 HTML 路径。
+
+更详细的流程见 [MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md)。
+
+建议记录格式：
+
+| 步骤 | 结果 | 备注 |
+|------|------|------|
+| 打开文件夹 | 待记录 | |
+| 编辑保存 | 待记录 | |
+| 添加评论 | 待记录 | |
+| 关闭重开评论仍存在 | 待记录 | |
+| 内容变化后评论仍存在 | 待记录 | |
+| 搜索 | 待记录 | |
+| 导出 HTML | 待记录 | |
+
+## 后续测试计划
+
+优先补齐：
+
+- `selection.ts` 文本选择工具测试
+- `comment-highlight.ts` 高亮渲染测试
+- 扩展 WebdriverIO + `@wdio/tauri-service` embedded WebDriver，尽量减少测试专用编辑钩子和程序化选择辅助
+- Developer ID 签名、公证和 notarized DMG 安装后启动验证
+
+## 正式发布验证
+
+`release:notarize` 需要以下环境变量：
+
 ```bash
-npm test -- --watch
+export DEVELOPER_ID_APPLICATION='Developer ID Application: Example, Inc. (TEAMID)'
+export NOTARY_KEYCHAIN_PROFILE='md-html-reader'
+pnpm run release:notarize
 ```
 
-### UI 模式（浏览器界面）
+前置条件：
+
+- 本机钥匙串中存在匹配的 Developer ID Application 证书。
+- 已通过 `xcrun notarytool store-credentials <profile-name>` 保存 Apple Notary Service 凭证。
+- 可访问 Apple Notary Service。
+
+当前本机检查结果是 `security find-identity -v -p codesigning` 返回 0 个有效 identity，因此该正式发布验证仍不能在当前机器闭环。
+
+说明：macOS 上不要直接依赖 `tauri-driver` 路线；Tauri 官方建议使用 WebdriverIO 的 Tauri service embedded provider 来支持 macOS。
+
+## 调试命令
+
 ```bash
-npm run test:ui
+pnpm test -- --reporter=verbose
+pnpm test -- comment-anchor
+pnpm test -- --run --reporter=verbose --bail
+pnpm test:ui
+pnpm test:coverage
 ```
 
-### 代码覆盖率
-```bash
-npm run test:coverage
-```
-
----
-
-## 📊 当前测试覆盖
-
-### 已测试模块
-
-#### 1. **comment-anchor.ts** (核心算法)
-- ✅ createAnchor() - 锚点创建
-- ✅ relocateAnchor() - 三层重定位策略
-  - 精确匹配策略
-  - 模糊匹配策略（Levenshtein）
-  - 附近搜索策略
-- ✅ 边界情况：空文本、短文件、完全不同文本
-- ✅ 性能测试：10KB 文件 < 100ms
-- ✅ Bug #8 修复验证：短文件边界检查
-
-**测试用例数**: 15+  
-**覆盖场景**: 标准情况、边界情况、错误处理、性能
-
-#### 2. **comments store** (状态管理)
-- ✅ loadComments() - Bug #1 修复验证
-- ✅ saveComment() - Bug #2 修复验证
-- ✅ deleteComment() - Bug #3 修复验证
-- ✅ updateCommentStatus() - Bug #4 修复验证
-- ✅ 错误处理和状态回滚
-
-**测试用例数**: 10+  
-**验证**: 所有 Tauri 调用包含 filePath 参数
-
-#### 3. **workspace store** (文件管理)
-- ✅ loadFolder() - 文件夹加载
-- ✅ openFile() - 文件读取
-- ✅ saveCurrentFile() - 文件保存
-- ✅ 错误处理
-
-**测试用例数**: 7+
-
----
-
-## 📝 测试文件结构
-
-```
-src/tests/
-├── setup.ts                      # Vitest 全局配置
-├── comment-anchor.test.ts        # 锚点算法测试（15+ 用例）
-├── comments.store.test.ts        # 评论 store 测试（10+ 用例）
-└── workspace.store.test.ts       # 工作区 store 测试（7+ 用例）
-```
-
----
-
-## 🎯 测试策略
-
-### 单元测试
-- **目标**: 测试独立函数和模块
-- **覆盖**: 核心算法、工具函数、状态管理
-- **工具**: Vitest + Mock
-
-### 组件测试
-- **目标**: 测试 Vue 组件行为
-- **覆盖**: 用户交互、事件触发、props/emits
-- **工具**: Vue Test Utils
-
-### 集成测试
-- **目标**: 测试多个模块协同工作
-- **覆盖**: 完整用户流程
-- **工具**: Vitest + Mock Tauri API
-
----
-
-## ✅ 验证的 Bug 修复
-
-测试套件验证了以下 bug 修复：
-
-### Bug #1-4: comments.ts 参数缺失
-```typescript
-// 每个测试验证 invoke 调用包含 filePath
-expect(invoke).toHaveBeenCalledWith('load_comments', {
-  fileHash: expect.any(String),
-  filePath: expect.any(String), // ← 必须存在
-})
-```
-
-### Bug #8: extractCoreText 短文件
-```typescript
-it('应该防止短 quote 导致的空字符串问题', () => {
-  const shortText = 'Only thirty characters here!!'
-  const anchor = createAnchor(shortText, 5, 11)
-  const result = relocateAnchor(anchor, shortText)
-  
-  expect(result.isValid).toBe(true)
-  expect(result.confidence).toBe(1.0)
-})
-```
-
----
-
-## 📈 测试覆盖目标
-
-| 模块 | 当前覆盖 | 目标覆盖 | 状态 |
-|------|---------|---------|------|
-| **comment-anchor.ts** | 90%+ | 95% | ✅ 优秀 |
-| **stores/comments.ts** | 85%+ | 90% | ✅ 良好 |
-| **stores/workspace.ts** | 80%+ | 85% | ✅ 良好 |
-| **utils/selection.ts** | 0% | 70% | ⏳ 待添加 |
-| **components/*.vue** | 0% | 60% | ⏳ 待添加 |
-
----
-
-## 🔧 编写新测试
-
-### 测试模板
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest'
-
-describe('模块名', () => {
-  beforeEach(() => {
-    // 测试前设置
-  })
-
-  describe('功能组', () => {
-    it('应该做正确的事情', () => {
-      // Arrange: 准备数据
-      const input = 'test'
-
-      // Act: 执行操作
-      const result = someFunction(input)
-
-      // Assert: 验证结果
-      expect(result).toBe('expected')
-    })
-
-    it('应该处理错误情况', () => {
-      expect(() => someFunction(null)).toThrow()
-    })
-  })
-})
-```
-
-### Mock Tauri API
-
-```typescript
-import { vi } from 'vitest'
-import { invoke } from '@tauri-apps/api/core'
-
-vi.mock('@tauri-apps/api/core')
-
-// 在测试中
-vi.mocked(invoke).mockResolvedValue('mock result')
-```
-
----
-
-## 🐛 调试测试
-
-### 查看详细输出
-```bash
-npm test -- --reporter=verbose
-```
-
-### 只运行特定测试
-```bash
-npm test -- comment-anchor
-```
-
-### 只运行失败的测试
-```bash
-npm test -- --run --reporter=verbose --bail
-```
-
-### 使用 UI 调试
-```bash
-npm run test:ui
-# 打开 http://localhost:51204/__vitest__/
-```
-
----
-
-## 📊 持续集成
-
-### GitHub Actions 配置示例
+## CI 建议
 
 ```yaml
-name: Test
+name: Validate
 
 on: [push, pull_request]
 
 jobs:
-  test:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
-      - run: npm install
-      - run: npm test
-      - run: npm run test:coverage
-      - uses: codecov/codecov-action@v3
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: CI=true pnpm install --frozen-lockfile
+      - run: pnpm test -- --run
+      - run: pnpm build
+      - run: cargo test
+        working-directory: src-tauri
+      - run: pnpm run tauri:build
+      - run: pnpm run tauri:build:dmg
 ```
 
----
-
-## 🎯 下一步测试计划
-
-### 优先级 1：核心功能
-- [ ] selection.ts 文本选择工具
-- [ ] comment-highlight.ts 高亮渲染
-- [ ] SearchPanel.vue 搜索面板
-
-### 优先级 2：UI 组件
-- [ ] MilkdownEditor.vue 编辑器组件
-- [ ] FileTree.vue 文件树
-- [ ] CommentSidebar.vue 评论边栏
-
-### 优先级 3：E2E 测试
-- [ ] 完整用户流程
-- [ ] 文件操作流程
-- [ ] 评论创建流程
-
----
-
-## 💡 最佳实践
-
-1. **测试先行**: 修复 bug 前先写失败的测试
-2. **独立性**: 每个测试应该独立运行
-3. **可读性**: 测试名称应该清楚描述预期行为
-4. **边界情况**: 测试空值、极端值、错误输入
-5. **性能**: 避免慢速测试（> 1s）
-
----
-
-## 🔗 相关资源
-
-- [Vitest 文档](https://vitest.dev/)
-- [Vue Test Utils](https://test-utils.vuejs.org/)
-- [Testing Best Practices](https://github.com/goldbergyoni/javascript-testing-best-practices)
-
----
-
-**当前测试状态**: ✅ 核心模块已覆盖，32+ 测试用例通过
+**当前测试状态**：自动化测试已覆盖核心数据链路、App 级用户流、搜索/导出入口、Rust 命令层核心路径、真实窗口核心 E2E、新进程重开后的评论持久化、`.app` 构建、ad-hoc 签名的 headless DMG 生成和本地 DMG 启动 smoke；上述链路也已在不含 `node_modules`、`dist` 和 `src-tauri/target` 的临时副本中验证。Developer ID 签名/公证脚本已就绪，但当前机器没有有效 Developer ID identity。发布判断仍依赖一次真实 Tauri 窗口人工端到端验收记录、Developer ID 签名、公证与 notarized 安装后启动验证。

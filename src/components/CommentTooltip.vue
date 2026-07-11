@@ -8,13 +8,21 @@
         left: `${position.left}px`,
       }"
     >
-      <button
-        @click="handleAddComment"
-        class="px-3 py-1.5 bg-blue-500 text-white rounded shadow-lg hover:bg-blue-600 text-sm flex items-center gap-1"
-      >
-        <span>💬</span>
-        <span>添加评论</span>
-      </button>
+      <div class="flex gap-2">
+        <button
+          @click="handleAddComment"
+          class="px-3 py-1.5 bg-blue-500 text-white rounded shadow-lg hover:bg-blue-600 text-sm flex items-center gap-1"
+        >
+          <span>💬</span>
+          <span>添加评论</span>
+        </button>
+        <button
+          @click="handleTranslate"
+          class="px-3 py-1.5 bg-gray-900 text-white rounded shadow-lg hover:bg-gray-700 text-sm flex items-center gap-1"
+        >
+          <span>翻译</span>
+        </button>
+      </div>
     </div>
 
     <!-- 评论输入对话框 -->
@@ -68,6 +76,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   addComment: [content: string, selection: Selection]
+  translate: [selection: Selection]
   close: []
 }>()
 
@@ -76,6 +85,7 @@ const showDialog = ref(false)
 const commentContent = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const selectedText = ref('')
+const selectionSnapshot = ref<Selection | null>(null)
 
 // 监听 selection 变化，更新工具提示位置
 watch(() => props.selection, (newSelection) => {
@@ -92,6 +102,7 @@ function handleAddComment() {
   if (!props.selection) return
 
   selectedText.value = props.selection.text
+  selectionSnapshot.value = props.selection
   showDialog.value = true
   commentContent.value = ''
 
@@ -101,16 +112,22 @@ function handleAddComment() {
   })
 }
 
+function handleTranslate() {
+  if (!props.selection) return
+  emit('translate', props.selection)
+}
+
 function closeDialog() {
   showDialog.value = false
   commentContent.value = ''
+  selectionSnapshot.value = null
   emit('close')
 }
 
 function submitComment() {
-  if (!commentContent.value.trim() || !props.selection) return
+  if (!commentContent.value.trim() || !selectionSnapshot.value) return
 
-  emit('addComment', commentContent.value.trim(), props.selection)
+  emit('addComment', commentContent.value.trim(), selectionSnapshot.value)
   closeDialog()
 }
 

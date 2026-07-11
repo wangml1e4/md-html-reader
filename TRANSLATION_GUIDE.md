@@ -126,7 +126,7 @@
 
 <!-- 2. 在初始化代码中启用 -->
 <script type="module">
-  // ... 现有的 CodeMirror 初始化代码 ...
+  // ... 现有的编辑器初始化代码 ...
 
   window.addEventListener('load', () => {
     // 初始化翻译（快速查看模式）

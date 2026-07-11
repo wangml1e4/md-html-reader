@@ -49,11 +49,13 @@ describe('workspace store', () => {
       const store = useWorkspaceStore()
       const mockContent = '# Test Markdown\n\nContent here.'
 
+      store.folderPath = '/test'
       vi.mocked(invoke).mockResolvedValue(mockContent)
 
       await store.openFile('/test/file.md')
 
       expect(invoke).toHaveBeenCalledWith('read_file', {
+        workspacePath: '/test',
         path: '/test/file.md',
       })
 
@@ -66,6 +68,7 @@ describe('workspace store', () => {
     it('应该处理读取失败', async () => {
       const store = useWorkspaceStore()
 
+      store.folderPath = '/test'
       vi.mocked(invoke).mockRejectedValue(new Error('Read failed'))
 
       await store.openFile('/test/file.md')
@@ -77,6 +80,7 @@ describe('workspace store', () => {
   describe('saveCurrentFile', () => {
     it('应该保存当前文件内容', async () => {
       const store = useWorkspaceStore()
+      store.folderPath = '/test'
       store.currentFile = {
         path: '/test/file.md',
         content: 'old content',
@@ -87,6 +91,7 @@ describe('workspace store', () => {
       await store.saveCurrentFile('new content')
 
       expect(invoke).toHaveBeenCalledWith('write_file', {
+        workspacePath: '/test',
         path: '/test/file.md',
         content: 'new content',
       })
@@ -99,6 +104,20 @@ describe('workspace store', () => {
 
       await store.saveCurrentFile('content')
 
+      expect(invoke).not.toHaveBeenCalled()
+    })
+
+    it('没有加载工作区时不读取或写入文件', async () => {
+      const store = useWorkspaceStore()
+
+      await store.openFile('/test/file.md')
+      expect(invoke).not.toHaveBeenCalled()
+
+      store.currentFile = {
+        path: '/test/file.md',
+        content: 'old content',
+      }
+      await expect(store.saveCurrentFile('new content')).rejects.toThrow('未加载工作区')
       expect(invoke).not.toHaveBeenCalled()
     })
   })

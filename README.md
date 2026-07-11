@@ -2,88 +2,82 @@
 
 > 一个 macOS 原生应用：**只读预览** + **Markdown 编辑** + **飞书风格评论**
 
-[![Status](https://img.shields.io/badge/Status-MVP%20Complete-success)](DELIVERY.md)
+[![Status](https://img.shields.io/badge/Status-Validation%20In%20Progress-yellow)](PROJECT_SUMMARY.md)
 [![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey)](https://www.apple.com/macos/)
-[![Tech](https://img.shields.io/badge/Tech-Tauri%20%2B%20Svelte-blue)](https://tauri.app/)
+[![Tech](https://img.shields.io/badge/Tech-Tauri%20%2B%20Vue%20%2B%20Milkdown-blue)](https://tauri.app/)
 
 ---
 
 ## 快速开始
 
-### 在线演示（无需安装）
+### 当前主线：Tauri + Vue + Milkdown
 
-在预览面板直接打开以下文件：
+```bash
+corepack enable
+corepack prepare pnpm@11.7.0 --activate
+pnpm install --frozen-lockfile
+pnpm build
+pnpm exec tauri dev
+```
+
+Rust 侧基础验证：
+
+```bash
+cd src-tauri
+cargo test
+```
+
+### 历史 HTML 原型（无需安装）
+
+以下文件用于保留早期 CDN 原型能力，不代表当前桌面应用主线，也不作为发布验收口径：
 
 | 原型 | 功能 | 文件 |
 |------|------|------|
 | 🎨 **预览器** | Markdown 渲染 + 代码高亮 + Mermaid 图表 | [enhanced.html](enhanced.html) |
-| ✏️ **编辑器** | CodeMirror 6 + 三模式切换 + 文件保存 | [editor.html](editor.html) |
+| ✏️ **编辑器** | 历史编辑器原型 + 三模式切换 + 文件保存 | [editor.html](editor.html) |
 | 💬 **评论系统** | 选中文本 → 侧边栏批注 → 高亮显示 | [comments.html](comments.html) |
-
-### 本地运行（推荐）
-
-```bash
-# 克隆仓库
-git clone <your-repo-url>
-cd markdown-html
-
-# 启动本地服务器
-python3 -m http.server 8080
-# 或使用 Node.js
-node dev-server.mjs
-
-# 浏览器访问
-open http://localhost:8080/enhanced.html
-```
 
 ---
 
 ## 功能特性
 
-### ✅ 已实现
+### 当前主线已实现
 
-#### 📖 阶段 1：只读预览
-- ✅ Markdown 完整渲染（标题、段落、列表、引用、表格）
-- ✅ 代码高亮（50+ 语言，highlight.js）
-- ✅ Mermaid 图表（流程图、时序图、甘特图）
-- ✅ 文件打开与 HTML 导出
-- ✅ 实时预览（防抖优化）
-
-#### ✏️ 阶段 2：Markdown 编辑
-- ✅ CodeMirror 6 专业编辑器
-- ✅ 预览/编辑/分屏三种模式
-- ✅ 文件保存（File System Access API）
-- ✅ 实时渲染同步
-
-#### 💬 阶段 3：评论系统（核心）
-- ✅ 选中文本添加评论
-- ✅ 侧边栏评论界面
-- ✅ CSS Custom Highlight API 高亮
-- ✅ 评论导出 JSON（sidecar 格式）
+- Tauri 2 + Vue 3 + Pinia 应用入口
+- Milkdown WYSIWYG Markdown 编辑器
+- Rust 文件夹扫描、文件读取、文件写入命令
+- 评论 store、锚点算法、sidecar 存储
+- 前端 camelCase 评论数据与 Rust 序列化兼容，并保留旧 snake_case sidecar 读取能力
+- 评论 sidecar 文件名由稳定文档路径派生，内容 hash 作为版本信息
+- 保存状态等待真实写盘成功后再显示
+- 工具栏文件名搜索、内容搜索和基础 HTML 导出入口
+- WebdriverIO 真实 Tauri 窗口核心路径验证入口
 
 ### 🚧 待完善
 
-- ⏸️ markdown-it 源映射插件（字符级偏移）
-- ⏸️ 三级降级解析器（锚点漂移处理）
-- ⏸️ CM6 实时锚点平移
-- ⏸️ Tauri 桌面应用打包
+- 核心路径仍需要一次人工端到端验收记录
+- 原生目录选择、导出保存对话框、真实键盘编辑和手工关闭重开操作仍需要验收记录
+- Tauri 安装包 Developer ID 签名、公证和发布流程未闭环；headless DMG 可生成并做 ad-hoc 签名
+- 大文件性能和评论高亮视觉联动仍需增强
 
 ---
 
 ## 技术栈
 
-### 当前实现（CDN 方案）
+### 当前主线
+- **Tauri 2.x** - 桌面应用框架
+- **Vue 3** - 前端框架
+- **Pinia** - 状态管理
+- **Milkdown 7** - Markdown WYSIWYG 编辑器
+- **TypeScript 5.x** - 类型系统
+- **Rust** - 本地文件、评论和搜索命令
+
+### 历史 HTML 原型（CDN 方案）
 - **markdown-it 14** - Markdown 渲染
 - **highlight.js 11** - 代码高亮
 - **Mermaid 11** - 图表渲染
-- **CodeMirror 6** - 代码编辑器
+- **早期编辑器原型** - 历史 CDN 编辑体验
 - **CSS Custom Highlight API** - 原生高亮
-
-### 目标架构（完整版）
-- **Tauri 2.3** - 桌面应用框架
-- **Svelte 5** - 前端框架
-- **TypeScript 5.7** - 类型系统
-- **Rust 1.96** - 后端语言
 
 ---
 
@@ -104,8 +98,11 @@ open http://localhost:8080/enhanced.html
 | 文档 | 说明 |
 |------|------|
 | [PROJECT_PLAN.md](PROJECT_PLAN.md) | 完整项目方案与实施路径 |
-| [PROGRESS.md](PROGRESS.md) | 开发进度报告 |
-| [DELIVERY.md](DELIVERY.md) | 项目交付报告（完整功能清单） |
+| [TESTING.md](TESTING.md) | 安装、测试、构建和手工验收指南 |
+| [ROADMAP.md](ROADMAP.md) | 后续开发计划与未闭环风险 |
+| [CHANGELOG.md](CHANGELOG.md) | 当前验证版变更、验证证据和已知问题 |
+| [PROGRESS.md](PROGRESS.md) | 历史开发进度报告 |
+| [DELIVERY.md](DELIVERY.md) | 历史交付记录 |
 | [docs/UI-system/DESIGN.md](docs/UI-system/DESIGN.md) | Apple 风格设计系统规范 |
 
 ---
@@ -130,7 +127,7 @@ open http://localhost:8080/enhanced.html
 3. 点击「打开文件」加载 .md 文件
 4. 编辑后点击「保存」写回
 
-**亮点**：CodeMirror 6 编辑器、三种模式无缝切换
+**亮点**：历史编辑器原型、三种模式无缝切换
 
 ### 3. 评论系统（comments.html）
 
@@ -178,31 +175,84 @@ Token 流 + 源映射注入
 ### 环境要求
 
 - Node.js 24+
-- pnpm 10+
+- pnpm 11.7.0（已通过 `packageManager` 固定，建议用 Corepack 激活）
 - Rust 1.96+
 - macOS（Xcode Command Line Tools）
 
-### 安装依赖（待解决网络问题）
+### 安装依赖
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ### 启动开发服务器
 
 ```bash
-# Tauri 开发模式（需依赖安装完成）
-pnpm tauri dev
-
-# 临时方案：直接打开 HTML 原型
-open enhanced.html  # 或在浏览器中打开
+pnpm exec tauri dev
 ```
 
-### 构建
+### 验证
 
 ```bash
-pnpm tauri build  # 构建 macOS .dmg 安装包
+CI=true pnpm install --frozen-lockfile
+pnpm test -- --run
+pnpm build
+cd src-tauri && cargo test
+cd ..
+pnpm run tauri:build
+pnpm run tauri:build:dmg
+pnpm run smoke:dmg
+pnpm run test:e2e
 ```
+
+`pnpm run test:e2e` 使用 WebdriverIO embedded provider 启动真实 Tauri WebView，覆盖临时目录打开、Markdown 打开、保存、评论持久化、文件名搜索、内容搜索、HTML 导出，以及新 Tauri 进程重开后的评论读取。该模式会绕过原生系统对话框，并用测试专用编辑钩子和程序化文本选择辅助核心路径验证。
+
+上述命令已在不含 `node_modules`、`dist` 和 `src-tauri/target` 的临时副本中验证过，用于模拟新用户首次安装和构建路径。
+
+手工验收准备：
+
+```bash
+pnpm run manual:prepare
+pnpm exec tauri dev
+```
+
+该命令会生成临时验收工作区和结果模板，详见 [MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md)。手工验收结果未记录前，不能把发布状态写成完成。
+
+### 构建 macOS App
+
+```bash
+pnpm run tauri:build
+```
+
+### 构建 headless DMG
+
+```bash
+pnpm run tauri:build:dmg
+```
+
+该命令先生成 `.app`，再用 `hdiutil` 创建包含 App 和 Applications 链接的普通 DMG：
+
+`src-tauri/target/release/bundle/dmg/MD+HTML Reader_0.9.0_aarch64.dmg`
+
+本地安装包 smoke：
+
+```bash
+pnpm run smoke:dmg
+```
+
+说明：这个 DMG 内的 App 会做 ad-hoc 签名，`smoke:dmg` 会挂载 DMG、复制 App 到临时目录、校验签名并启动一次 App 进程。它没有 Developer ID 签名和公证，不包含 Finder 背景和图标位置美化。原 Tauri Finder-style DMG 路线保留为 `pnpm run tauri:build:dmg:tauri`，当前环境仍会卡在 `bundle_dmg.sh` 的 Finder/AppleScript 美化阶段。
+
+### Developer ID 签名和公证
+
+正式 macOS 分发需要 Developer ID 证书和 notarytool keychain profile：
+
+```bash
+export DEVELOPER_ID_APPLICATION='Developer ID Application: Example, Inc. (TEAMID)'
+export NOTARY_KEYCHAIN_PROFILE='md-html-reader'
+pnpm run release:notarize
+```
+
+`release:notarize` 会构建 `.app`、使用 Developer ID 重签名、生成 DMG、签名 DMG、提交 Apple Notary Service、staple 并验证。当前机器没有可用 Developer ID 证书，因此这一步仍不是已闭环状态。
 
 ---
 
@@ -212,11 +262,11 @@ pnpm tauri build  # 构建 macOS .dmg 安装包
 3784f8b - docs: 添加项目交付报告
 276aea5 - feat: 阶段 3 原型 - 评论系统核心功能
 a99a10b - docs: 更新进度报告 - 阶段 2 完成
-d9ffb71 - feat: 阶段 2 完成 - 集成 CodeMirror 6 编辑器
+d9ffb71 - feat: 阶段 2 完成 - 集成早期编辑器原型
 b4dfe20 - feat: 阶段 1 完成 - 功能完整的预览器
 6e7630e - docs: 添加开发进度报告
 f681c0a - feat: 阶段 1 原型 - 基础 Markdown 预览功能
-fcc3f30 - feat: 阶段 0 - Tauri + Svelte 项目脚手架
+fcc3f30 - feat: 阶段 0 - Tauri + 早期前端项目脚手架
 62171d0 - Add project plan, gitignore, and Apple-style UI design system
 ```
 
@@ -231,13 +281,15 @@ fcc3f30 - feat: 阶段 0 - Tauri + Svelte 项目脚手架
 ## 致谢
 
 - [Tauri](https://tauri.app/) - 桌面应用框架
-- [Svelte](https://svelte.dev/) - 前端框架
-- [CodeMirror 6](https://codemirror.net/) - 代码编辑器
+- [Vue](https://vuejs.org/) - 当前前端框架
+- [Milkdown](https://milkdown.dev/) - 当前 Markdown 编辑器
+- 早期前端脚手架 - 历史参考
+- 早期 HTML 编辑器 - 历史原型参考
 - [markdown-it](https://github.com/markdown-it/markdown-it) - Markdown 解析器
 - [Mermaid](https://mermaid.js.org/) - 图表渲染
 - [W3C Web Annotation Data Model](https://www.w3.org/TR/annotation-model/) - 锚点设计参考
 
 ---
 
-**状态**：✅ MVP 完成  
-**最后更新**：2026-06-30
+**状态**：验证中，当前主线代码、核心窗口 E2E、`.app`、headless DMG 构建和本地 DMG smoke 已具备；Developer ID 签名/公证脚本已就绪但缺少本机证书，发布前仍需人工端到端验收和正式公证闭环
+**最后更新**：2026-07-03

@@ -1,0 +1,16 @@
+packages:
+  - .
+
+minimumReleaseAgeExclude:
+  - baseline-browser-mapping@2.10.41
+  - electron-to-chromium@1.5.385
+  - picomatch@4.0.5
+
+overrides:
+  "@wdio/native-utils": 2.5.0
+
+allowBuilds:
+  edgedriver: false
+  esbuild: true
+  geckodriver: false
+  vue-demi: true

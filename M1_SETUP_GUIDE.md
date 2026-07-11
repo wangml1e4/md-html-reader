@@ -56,7 +56,7 @@ mv vite.config.vue.ts vite.config.ts
 mv src/main-vue.ts src/main.ts
 mv src/App-vue.vue src/App.vue
 
-# 备份旧的 Svelte 文件
+# 备份旧的前端文件
 mkdir -p backup-svelte
 mv src/App.svelte backup-svelte/ 2>/dev/null || true
 mv src/app.css backup-svelte/ 2>/dev/null || true

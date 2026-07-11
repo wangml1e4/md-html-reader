@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MD+HTML Reader",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "identifier": "com.markdown-html.reader",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -11,14 +11,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg"],
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
+    "targets": ["app"]
   },
   "app": {
     "windows": [
@@ -31,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' asset: http://asset.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: http://asset.localhost https://unpkg.com https://cdn.jsdelivr.net; script-src-elem 'self' 'unsafe-inline' asset: http://asset.localhost https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' asset: http://asset.localhost https://fonts.googleapis.com; font-src 'self' data: asset: http://asset.localhost https://fonts.gstatic.com; img-src 'self' data: asset: http://asset.localhost https:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost https:; frame-src 'self' asset: http://asset.localhost; media-src 'self' data: asset: http://asset.localhost; worker-src 'self' blob:"
     }
   }
 }

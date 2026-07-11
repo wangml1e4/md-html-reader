@@ -1,0 +1,28 @@
+{
+  "build": {
+    "beforeBuildCommand": "pnpm build --mode e2e"
+  },
+  "bundle": {
+    "targets": ["app"]
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self' asset: http://asset.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval' asset: http://asset.localhost https://unpkg.com https://cdn.jsdelivr.net; script-src-elem 'self' 'unsafe-inline' asset: http://asset.localhost https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' asset: http://asset.localhost https://fonts.googleapis.com; font-src 'self' data: asset: http://asset.localhost https://fonts.gstatic.com; img-src 'self' data: asset: http://asset.localhost https:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost https:; frame-src 'self' asset: http://asset.localhost; media-src 'self' data: asset: http://asset.localhost; worker-src 'self' blob:",
+      "capabilities": [
+        "main",
+        {
+          "identifier": "e2e",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:window:default",
+            "dialog:default",
+            "wdio:default",
+            "wdio-webdriver:default"
+          ]
+        }
+      ]
+    }
+  }
+}

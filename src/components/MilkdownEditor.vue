@@ -8,6 +8,9 @@
 
       <div class="flex gap-2 items-center">
         <span v-if="isSaving" class="text-xs text-gray-400">保存中...</span>
+        <span v-else-if="saveError" class="text-xs text-red-500">
+          {{ saveError }}
+        </span>
         <span v-else-if="lastSaved" class="text-xs text-gray-400">
           {{ lastSavedText }}
         </span>
@@ -34,6 +37,7 @@
         :show="showCommentTooltip"
         :selection="currentSelection"
         @addComment="handleAddComment"
+        @translate="handleTranslate"
         @close="hideCommentTooltip"
       />
     </div>
@@ -48,19 +52,20 @@ import { gfm } from '@milkdown/preset-gfm'
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { prism } from '@milkdown/plugin-prism'
-import { nord } from '@milkdown/theme-nord'
-import '@milkdown/theme-nord/style.css'
+// import { nord } from '@milkdown/theme-nord'
+// import '@milkdown/theme-nord/style.css'  // 与 Tailwind 冲突，暂时禁用
 import CommentTooltip from './CommentTooltip.vue'
 import { onSelectionChange, type Selection } from '../utils/selection'
 import { createAnchor } from '../utils/comment-anchor'
 
 const props = defineProps<{
   file: { path: string; content: string }
+  saveContent: (content: string) => Promise<void>
 }>()
 
 const emit = defineEmits<{
-  save: [content: string]
   createComment: [anchor: any, content: string]
+  translate: [selection: Selection]
 }>()
 
 const editorRef = ref<HTMLElement | null>(null)
@@ -68,7 +73,9 @@ const editor = ref<Editor | null>(null)
 const currentContent = ref(props.file.content)
 const isSaving = ref(false)
 const lastSaved = ref<number | null>(null)
+const saveError = ref<string | null>(null)
 const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const isE2E = import.meta.env.MODE === 'e2e'
 
 // 评论相关状态
 const showCommentTooltip = ref(false)
@@ -103,7 +110,7 @@ onMounted(async () => {
           scheduleAutoSave()
         })
       })
-      .use(nord)
+      // .use(nord)  // 与 Tailwind 冲突，暂时禁用
       .use(commonmark)
       .use(gfm)
       .use(history)
@@ -113,6 +120,7 @@ onMounted(async () => {
 
     // 初始化文本选择监听
     setupSelectionListener()
+    setupE2EHelpers()
 
   } catch (error) {
     console.error('初始化编辑器失败:', error)
@@ -126,6 +134,9 @@ onUnmounted(() => {
   }
   if (cleanupSelection) {
     cleanupSelection()
+  }
+  if (isE2E) {
+    delete (window as any).__markdownHtmlE2E
   }
   editor.value?.destroy()
 })
@@ -146,6 +157,20 @@ function hideCommentTooltip() {
   currentSelection.value = null
 }
 
+function setupE2EHelpers() {
+  if (!isE2E) return
+
+  ;(window as any).__markdownHtmlE2E = {
+    setEditorContent(content: string) {
+      currentContent.value = content
+      const editable = editorRef.value?.querySelector<HTMLElement>('.ProseMirror, [contenteditable="true"]')
+      if (editable) {
+        editable.textContent = content
+      }
+    },
+  }
+}
+
 // 处理创建评论
 function handleAddComment(content: string, selection: Selection) {
   const anchor = createAnchor(
@@ -157,6 +182,28 @@ function handleAddComment(content: string, selection: Selection) {
   emit('createComment', anchor, content)
   hideCommentTooltip()
 }
+
+function handleTranslate(selection: Selection) {
+  emit('translate', selection)
+  hideCommentTooltip()
+}
+
+function scrollToHeading(text: string, level: number) {
+  const selector = `h${level}`
+  const headings = Array.from(editorRef.value?.querySelectorAll<HTMLElement>(selector) || [])
+  const target = headings.find(heading => heading.textContent?.trim() === text)
+
+  if (target) {
+    target.scrollIntoView?.({ block: 'start' })
+    return
+  }
+
+  editorRef.value?.scrollIntoView?.({ block: 'start' })
+}
+
+defineExpose({
+  scrollToHeading,
+})
 
 // 监听文件变化，更新编辑器内容
 watch(() => props.file, async (newFile, oldFile) => {
@@ -208,11 +255,13 @@ async function save() {
   if (isSaving.value) return
 
   isSaving.value = true
+  saveError.value = null
   try {
-    emit('save', currentContent.value)
+    await props.saveContent(currentContent.value)
     lastSaved.value = Date.now()
   } catch (error) {
     console.error('保存失败:', error)
+    saveError.value = '保存失败'
   } finally {
     isSaving.value = false
   }

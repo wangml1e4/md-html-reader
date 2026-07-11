@@ -23,12 +23,12 @@
 | 关注点 | 选型 | 理由 |
 |--------|------|------|
 | 应用外壳 | **Tauri 2.x** | 与原版一致；体积小、性能好、原生 macOS 体验。Rust 后端只做文件 IO + 原子写,不参与字符索引计算 |
-| 前端框架 | **Svelte + TypeScript + Vite** | 轻量，模板语法接近 HTML,运行时几乎为零,适合状态驱动的工具应用 |
+| 前端框架 | **早期前端方案 + TypeScript + Vite** | 历史计划口径；当前主线已切换为 Vue + Milkdown + Tauri |
 | UI 设计语言 | **Apple 风格**（详见 [`docs/UI-system/DESIGN.md`](docs/UI-system/DESIGN.md)） | SF Pro Display/Text + Action Blue (#0066cc) + 边到边瓦片节奏 + 唯一阴影留给产品图。设计 token 全部走 `docs/UI-system/DESIGN.md` 的 YAML 定义 |
 | Markdown 渲染 | **markdown-it** + 自定义源映射插件 | token 流可插件化，能注入字符级 `data-src-*` 位置映射 |
 | 代码高亮 | Shiki / highlight.js | 语法高亮 |
 | 图表 | **Mermaid** | 复刻原版图表能力 |
-| 编辑器 | **CodeMirror 6** | 原生 UTF-16 偏移；`ChangeSet.mapPos` 支持 O(变更) 的实时锚点平移 |
+| 编辑器 | **早期编辑器方案** | 历史计划口径；当前主线已切换为 Milkdown |
 | 评论高亮 | **CSS Custom Highlight API** | WKWebView 原生支持；不破坏 DOM、天然支持重叠区间。降级方案：`<mark>` 切片 |
 | 漂移匹配 | **diff-match-patch** | 成熟的纯前端模糊匹配，处理被引用文本被轻改的场景 |
 | 哈希 | xxhash-wasm / FNV-1a | 文档与块指纹（非密码学用途，求快） |
@@ -125,7 +125,7 @@ interface Comment {
 ## 五、分阶段实施路径
 
 ### 阶段 0 — 项目脚手架
-- `pnpm create tauri-app`（Svelte + TS 模板），配置 macOS 构建
+- `pnpm create tauri-app`（早期 TS 模板），配置 macOS 构建
 - 搭建目录结构、基础布局（顶栏 + 主预览区 + 可折叠侧边栏）
 
 ### 阶段 1 — 只读预览（复刻原版 MVP）
@@ -134,7 +134,7 @@ interface Comment {
 - **里程碑**：能打开并安全预览任意 `.md`，对齐原版核心
 
 ### 阶段 2 — Markdown 编辑
-- 集成 CodeMirror 6，预览 / 编辑 / 分屏三种模式切换
+- 集成早期编辑器原型，预览 / 编辑 / 分屏三种模式切换
 - 编辑↔预览滚动同步、保存（原子写 + 外部改动检测）
 
 ### 阶段 3 — 评论系统（核心难点，分步落地）
@@ -165,7 +165,7 @@ markdown-html/
 │   │   │   └── highlightLayer.ts     # Custom Highlight API 渲染 + 重叠/点击处理
 │   │   └── comments/
 │   │       └── sidecarStore.ts       # sidecar 文件读写
-│   └── components/                   # Svelte 组件（预览 / 编辑 / 侧边栏）
+│   └── components/                   # 早期前端组件（预览 / 编辑 / 侧边栏）
 └── src-tauri/                        # Rust：文件 IO + 原子写命令
 ```
 
@@ -191,7 +191,7 @@ markdown-html/
 | # | 决策项 | 选择 |
 |---|--------|------|
 | 1 | UI 设计语言 | Apple 风格，遵循 [`docs/UI-system/DESIGN.md`](docs/UI-system/DESIGN.md) |
-| 2 | 前端 UI 框架 | Svelte + TypeScript + Vite |
+| 2 | 前端 UI 框架 | 历史前端方案 + TypeScript + Vite |
 | 3 | 评论作者标识 | 默认 `admin`，用户可在设置中修改昵称；昵称存本地配置（如 Tauri Store 或 `~/Library/Application Support/<app>/config.json`） |
 | 4 | 评论正文格式 | 支持 Markdown 渲染（侧边栏内用同一套 markdown-it 实例渲染，禁用 HTML 嵌入以防 XSS） |
 | 5 | BlockSelector 结构化锚 | v2 增强，MVP 不实现 |
