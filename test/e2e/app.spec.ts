@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 const workspacePath = '/tmp/markdown-html-e2e-workspace'
 const notePath = join(workspacePath, 'note.md')
+const secondNotePath = join(workspacePath, 'second.md')
 const exportPath = join(workspacePath, 'note.html')
 
 function buttonWithText(text: string) {
@@ -20,7 +21,7 @@ async function waitForBodyText(text: string) {
   )
 }
 
-async function setEditorContent(text: string) {
+async function setEditorContent(text: string, expectedText = 'Edited keyword') {
   const updated = await browser.execute((content) => {
     const helpers = (window as any).__markdownHtmlE2E
     if (!helpers) return false
@@ -29,7 +30,7 @@ async function setEditorContent(text: string) {
   }, text)
 
   expect(updated).toBe(true)
-  await waitForBodyText('Edited keyword')
+  await waitForBodyText(expectedText)
 }
 
 async function selectEditorText(text: string) {
@@ -80,6 +81,7 @@ describe('MD+HTML Reader Tauri window', () => {
       notePath,
       '# Manual E2E Note\n\nOriginal keyword for validation.\n\nSecond paragraph for comment target.\n'
     )
+    writeFileSync(secondNotePath, '# Second Note\n\nSecond file content.\n')
   })
 
   it('loads the real Tauri webview and exposes the WDIO Tauri bridge', async () => {
@@ -138,5 +140,31 @@ describe('MD+HTML Reader Tauri window', () => {
     await buttonWithText('导出 HTML').click()
     await waitForBodyText('HTML 已导出')
     expect(readFileSync(exportPath, 'utf8')).toContain('Edited keyword')
+  })
+
+  it('keeps the current file when an unsaved switch is cancelled', async () => {
+    await buttonWithText('打开文件夹').click()
+    await waitForBodyText('second.md')
+    await buttonContaining('second.md').click()
+    await waitForBodyText('Second file content')
+    await buttonContaining('note.md').click()
+    await waitForBodyText('Original keyword')
+    await setEditorContent('# Unsaved draft\n\nDo not discard.', 'Unsaved draft')
+
+    await browser.execute(() => {
+      ;(window as any).__confirmMessages = []
+      window.confirm = (message?: string) => {
+        ;(window as any).__confirmMessages.push(message ?? '')
+        return false
+      }
+    })
+    await buttonContaining('second.md').click()
+    const confirmMessages = await browser.execute(() => (window as any).__confirmMessages)
+
+    expect(confirmMessages).toHaveLength(1)
+    expect(confirmMessages[0]).toContain('当前文件有未保存的更改')
+    await waitForBodyText('Unsaved draft')
+    expect(await $('body').getText()).not.toContain('Second file content')
+    expect(readFileSync(notePath, 'utf8')).toContain('Original keyword')
   })
 })

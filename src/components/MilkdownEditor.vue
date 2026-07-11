@@ -45,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
@@ -201,35 +201,25 @@ function scrollToHeading(text: string, level: number) {
   editorRef.value?.scrollIntoView?.({ block: 'start' })
 }
 
+function requestFileSwitch() {
+  if (currentContent.value === props.file.content) return true
+
+  const shouldDiscard = confirm(
+    '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？'
+  )
+
+  if (shouldDiscard && autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
+
+  return shouldDiscard
+}
+
 defineExpose({
+  requestFileSwitch,
   scrollToHeading,
 })
-
-// 监听文件变化，更新编辑器内容
-watch(() => props.file, async (newFile, oldFile) => {
-  if (!editor.value) return
-
-  // 检查是否有未保存的更改
-  if (oldFile && currentContent.value !== oldFile.content) {
-    const shouldDiscard = confirm(
-      '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？'
-    )
-    if (!shouldDiscard) {
-      // 用户取消，不切换文件
-      return
-    }
-  }
-
-  currentContent.value = newFile.content
-
-  try {
-    await editor.value.action((ctx) => {
-      ctx.set(defaultValueCtx, newFile.content)
-    })
-  } catch (error) {
-    console.error('更新编辑器内容失败:', error)
-  }
-}, { deep: true })
 
 // 自动保存（2秒防抖）
 function scheduleAutoSave() {

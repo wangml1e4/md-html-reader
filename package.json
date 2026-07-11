@@ -17,8 +17,8 @@
     "test": "vitest",
     "test:e2e": "pnpm run test:e2e:build && pnpm run test:e2e:core && pnpm run test:e2e:reopen",
     "test:e2e:build": "tauri build --debug --features e2e --bundles app --config src-tauri/tauri.e2e.conf.json",
-    "test:e2e:core": "wdio run wdio.e2e.conf.ts --spec ./test/e2e/app.spec.ts",
-    "test:e2e:reopen": "E2E_REOPEN_PHASE=create wdio run wdio.e2e.conf.ts --spec ./test/e2e/reopen.spec.ts && E2E_REOPEN_PHASE=verify wdio run wdio.e2e.conf.ts --spec ./test/e2e/reopen.spec.ts",
+    "test:e2e:core": "node scripts/run-e2e.mjs ./test/e2e/app.spec.ts",
+    "test:e2e:reopen": "E2E_REOPEN_PHASE=create node scripts/run-e2e.mjs ./test/e2e/reopen.spec.ts && E2E_REOPEN_PHASE=verify node scripts/run-e2e.mjs ./test/e2e/reopen.spec.ts",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage"
   },

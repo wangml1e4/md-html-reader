@@ -48,9 +48,11 @@ describe('App shell actions', () => {
     await wrapper.vm.$nextTick()
 
     await wrapper.get('button:nth-of-type(1)').trigger('click')
+    await flushPromises()
     expect(wrapper.get('[data-testid="search-panel"]').text()).toBe('files:/tmp/workspace')
 
     await wrapper.get('button:nth-of-type(2)').trigger('click')
+    await flushPromises()
     expect(wrapper.get('[data-testid="search-panel"]').text()).toBe('content:/tmp/workspace')
   })
 
@@ -85,5 +87,23 @@ describe('App shell actions', () => {
       cssContent: null,
     })
     expect(wrapper.text()).toContain('HTML 已导出')
+  })
+
+  it('工作区外导出路径显示明确限制说明', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(save).mockResolvedValue('/tmp/outside/note.html')
+    vi.mocked(invoke).mockRejectedValue(new Error('路径不在已授权工作区内'))
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    const workspace = useWorkspaceStore()
+    workspace.folderPath = '/tmp/workspace'
+    workspace.currentFile = { path: '/tmp/workspace/note.md', content: '# Note' }
+    await wrapper.vm.$nextTick()
+
+    await wrapper.get('button:nth-of-type(3)').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="status"]').text()).toBe('导出位置必须位于当前工作区内')
+    errorSpy.mockRestore()
   })
 })

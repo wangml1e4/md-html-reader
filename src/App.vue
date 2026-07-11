@@ -168,6 +168,7 @@
 
     <div
       v-if="exportMessage"
+      role="status"
       class="fixed bottom-4 right-4 bg-gray-900 text-white text-sm px-4 py-2 rounded shadow-lg"
     >
       {{ exportMessage }}
@@ -186,19 +187,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { useWorkspaceStore } from './stores/workspace'
 import { useCommentsStore } from './stores/comments'
 import FileTree from './components/FileTree.vue'
-import MilkdownEditor from './components/MilkdownEditor.vue'
 import HtmlRenderer from './components/HtmlRenderer.vue'
 import CommentSidebar from './components/CommentSidebar.vue'
-import SearchPanel from './components/SearchPanel.vue'
 import DocumentOutline from './components/DocumentOutline.vue'
-import TranslationCard from './components/TranslationCard.vue'
 import type { Selection } from './utils/selection'
+
+const MilkdownEditor = defineAsyncComponent(() =>
+  import('./components/MilkdownEditor.vue').then(module => module.default)
+)
+const SearchPanel = defineAsyncComponent(() =>
+  import('./components/SearchPanel.vue').then(module => module.default)
+)
+const TranslationCard = defineAsyncComponent(() =>
+  import('./components/TranslationCard.vue').then(module => module.default)
+)
 
 type SearchMode = 'files' | 'content'
 type FileFilter = 'all' | 'markdown' | 'html'
@@ -217,6 +225,10 @@ interface TranslationResult {
   targetLang: string
   service: TranslationService
 }
+interface EditorHandle {
+  requestFileSwitch: () => boolean
+  scrollToHeading: (text: string, level: number) => void
+}
 
 const workspace = useWorkspaceStore()
 const comments = useCommentsStore()
@@ -226,7 +238,7 @@ const fileFilter = ref<FileFilter>('all')
 const displayMode = ref<DisplayMode>('filename')
 const locateToken = ref(0)
 const outlineOpen = ref(false)
-const editorRef = ref<InstanceType<typeof MilkdownEditor> | null>(null)
+const editorRef = ref<EditorHandle | null>(null)
 const translationService = ref<TranslationService>('ollama')
 const translationState = ref<TranslationState>('idle')
 const translationOriginal = ref('')
@@ -267,6 +279,9 @@ async function openFolder() {
 
 async function openFile(filePath: string) {
   if (!workspace.folderPath) return
+  if (workspace.currentFile?.path === filePath) return
+  if (editorRef.value && !editorRef.value.requestFileSwitch()) return
+
   await workspace.openFile(filePath)
   await comments.loadComments(workspace.folderPath, filePath, workspace.currentFile?.content)
 }
@@ -328,7 +343,10 @@ async function exportHtml() {
     exportMessage.value = 'HTML 已导出'
   } catch (error) {
     console.error('导出 HTML 失败:', error)
-    exportMessage.value = 'HTML 导出失败'
+    const message = error instanceof Error ? error.message : String(error)
+    exportMessage.value = message.includes('路径不在已授权工作区内')
+      ? '导出位置必须位于当前工作区内'
+      : `HTML 导出失败：${message}`
   } finally {
     isExporting.value = false
   }

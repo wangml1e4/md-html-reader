@@ -1,6 +1,6 @@
 # Manual Acceptance
 
-This file defines the current manual acceptance process for the Vue + Milkdown + Tauri mainline. It does not claim the manual path has passed; it defines how to produce auditable evidence.
+This file defines the current manual acceptance process for the Vue + Milkdown + Tauri mainline and links the latest auditable result.
 
 ## Prepare
 
@@ -31,4 +31,6 @@ Use the app's native "打开文件夹" button to select the generated `workspace
 
 ## Current Status
 
-Manual acceptance remains open until a human records the generated checklist results. Automated E2E covers the real Tauri WebView, Rust commands, temporary filesystem path, search, export, and new-process comment persistence, but still uses an e2e fixed path, a test-only editor helper, and programmatic text selection.
+The native interaction checklist requested for the current release passed on 2026-07-11. The auditable record is in `docs/manual-acceptance-2026-07-11.md` and covers the native folder picker, real keyboard editing and save, the native export save dialog, and close/reopen persistence.
+
+Automated E2E separately covers the real Tauri WebView, Rust commands, temporary filesystem path, comments, search, export, and new-process comment persistence. It still uses an e2e fixed path, a test-only editor helper, and programmatic text selection, so the manual record remains the evidence for native dialogs and real keyboard input.

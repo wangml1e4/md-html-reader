@@ -1,3 +1,5 @@
+const embeddedPort = Number(process.env.TAURI_WEBDRIVER_PORT || 4445)
+
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./test/e2e/**/*.spec.ts'],
@@ -8,8 +10,10 @@ export const config: WebdriverIO.Config = {
       {
         appBinaryPath: './src-tauri/target/debug/md-html-reader',
         driverProvider: 'embedded',
-        startTimeout: 60000,
+        embeddedPort,
+        startTimeout: 90000,
         statusPollTimeout: 5000,
+        captureBackendLogs: true,
       },
     ],
   ],

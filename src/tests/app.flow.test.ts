@@ -8,6 +8,8 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 const milkdownLifecycle = vi.hoisted(() => ({
   mountCount: 0,
   unmountCount: 0,
+  switchRequests: 0,
+  allowSwitch: true,
 }))
 
 vi.mock('../components/FileTree.vue', () => ({
@@ -39,6 +41,15 @@ vi.mock('../components/MilkdownEditor.vue', () => ({
     },
     unmounted() {
       milkdownLifecycle.unmountCount++
+    },
+    setup(_props: unknown, { expose }: { expose: (value: unknown) => void }) {
+      expose({
+        requestFileSwitch() {
+          milkdownLifecycle.switchRequests++
+          return milkdownLifecycle.allowSwitch
+        },
+        scrollToHeading() {},
+      })
     },
     template: `
       <div data-testid="editor">
@@ -137,6 +148,8 @@ describe('App core user flow', () => {
     vi.clearAllMocks()
     milkdownLifecycle.mountCount = 0
     milkdownLifecycle.unmountCount = 0
+    milkdownLifecycle.switchRequests = 0
+    milkdownLifecycle.allowSwitch = true
   })
 
   it('覆盖打开文件夹、打开文件、保存、评论、重开、搜索和导出 HTML', async () => {
@@ -303,8 +316,44 @@ describe('App core user flow', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# Second')
+    expect(milkdownLifecycle.switchRequests).toBe(1)
     expect(milkdownLifecycle.mountCount).toBe(2)
     expect(milkdownLifecycle.unmountCount).toBe(1)
+  })
+
+  it('编辑器拒绝切换时保留当前文件和未保存内容', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return [
+          { name: 'first.md', path: '/tmp/workspace/first.md', type: 'file', extension: '.md' },
+          { name: 'second.md', path: '/tmp/workspace/second.md', type: 'file', extension: '.md' },
+        ]
+      }
+      if (command === 'read_file') return args.path.endsWith('second.md') ? '# Second' : '# First'
+      if (command === 'calculate_file_hash') return 'hash'
+      if (command === 'load_comments') return []
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+
+    const fileButtons = wrapper.findAll('[data-testid="file-item"]')
+    await fileButtons[0].trigger('click')
+    await flushPromises()
+    milkdownLifecycle.allowSwitch = false
+
+    await fileButtons[1].trigger('click')
+    await flushPromises()
+
+    expect(milkdownLifecycle.switchRequests).toBe(1)
+    expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# First')
+    expect(milkdownLifecycle.mountCount).toBe(1)
+    expect(invoke).not.toHaveBeenCalledWith('read_file', expect.objectContaining({
+      path: '/tmp/workspace/second.md',
+    }))
   })
 
   it('左侧工具条支持筛选、显示标题和定位当前文件', async () => {
