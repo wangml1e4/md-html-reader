@@ -1,22 +1,46 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { readFileSync } from 'node:fs'
 import HtmlRenderer from '../components/HtmlRenderer.vue'
 
 describe('HtmlRenderer', () => {
-  it('通过 Tauri asset URL 直接加载 HTML 文件', () => {
+  it('启用 Tauri asset protocol 以加载用户选择的本地 HTML', () => {
+    const tauriConfig = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'))
+    const e2eConfig = JSON.parse(readFileSync('src-tauri/tauri.e2e.conf.json', 'utf8'))
+
+    expect(tauriConfig.app.security.assetProtocol).toEqual({
+      enable: true,
+      scope: [],
+    })
+    expect(e2eConfig.app.security.assetProtocol).toEqual({
+      enable: true,
+      scope: [
+        '/tmp/markdown-html-e2e-workspace/**/*',
+        '/private/tmp/markdown-html-e2e-workspace/**/*',
+      ],
+    })
+  })
+
+  it('通过目录级 Tauri asset URL 为 HTML 注入相对资源基址', () => {
     const wrapper = mount(HtmlRenderer, {
       props: {
-        file: { path: '/tmp/workspace/page.html', content: '<h1>Rendered Page</h1>' },
+        file: {
+          path: '/tmp/workspace/page.html',
+          content: '<html><head><title>Page</title></head><body><h1>Rendered Page</h1></body></html>',
+        },
         openHtmlPreview: vi.fn(),
       },
     })
 
     const iframe = wrapper.get('iframe')
 
-    expect(convertFileSrc).toHaveBeenCalledWith('/tmp/workspace/page.html')
-    expect(iframe.attributes('src')).toBe('asset://localhost/%2Ftmp%2Fworkspace%2Fpage.html')
-    expect(iframe.attributes('srcdoc')).toBeUndefined()
+    expect(convertFileSrc).toHaveBeenCalledWith('/tmp/workspace')
+    expect(iframe.attributes('src')).toBeUndefined()
+    expect(iframe.attributes('srcdoc')).toContain(
+      '<base href="asset://localhost/%2Ftmp%2Fworkspace/">'
+    )
+    expect(iframe.attributes('srcdoc')).toContain('<h1>Rendered Page</h1>')
     expect(wrapper.text()).toContain('page.html')
   })
 

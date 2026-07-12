@@ -4,6 +4,7 @@ import { join } from 'node:path'
 const workspacePath = '/tmp/markdown-html-e2e-workspace'
 const notePath = join(workspacePath, 'note.md')
 const secondNotePath = join(workspacePath, 'second.md')
+const previewPath = join(workspacePath, 'preview.html')
 const exportPath = join(workspacePath, 'note.html')
 
 function buttonWithText(text: string) {
@@ -82,6 +83,15 @@ describe('MD+HTML Reader Tauri window', () => {
       '# Manual E2E Note\n\nOriginal keyword for validation.\n\nSecond paragraph for comment target.\n'
     )
     writeFileSync(secondNotePath, '# Second Note\n\nSecond file content.\n')
+    writeFileSync(
+      previewPath,
+      '<!doctype html><html><head><link rel="stylesheet" href="./preview.css"></head><body><main id="preview-status">Waiting</main><script type="module" src="./preview.js"></script></body></html>'
+    )
+    writeFileSync(join(workspacePath, 'preview.css'), '#preview-status { color: rgb(12, 34, 56); }')
+    writeFileSync(
+      join(workspacePath, 'preview.js'),
+      "const status = document.querySelector('#preview-status'); status.textContent = 'Rendered inside app'; parent.postMessage({ source: 'markdown-html-e2e-preview', text: status.textContent, color: getComputedStyle(status).color }, '*')"
+    )
   })
 
   it('loads the real Tauri webview and exposes the WDIO Tauri bridge', async () => {
@@ -140,6 +150,31 @@ describe('MD+HTML Reader Tauri window', () => {
     await buttonWithText('导出 HTML').click()
     await waitForBodyText('HTML 已导出')
     expect(readFileSync(exportPath, 'utf8')).toContain('Edited keyword')
+  })
+
+  it('renders local HTML with scripts and relative assets inside the app', async () => {
+    await buttonWithText('打开文件夹').click()
+    await waitForBodyText('preview.html')
+    await browser.execute(() => {
+      ;(window as any).__htmlPreviewMessage = null
+      window.addEventListener('message', (event) => {
+        if (event.data?.source === 'markdown-html-e2e-preview') {
+          ;(window as any).__htmlPreviewMessage = event.data
+        }
+      })
+    })
+    await buttonContaining('preview.html').click()
+
+    await expect($('iframe[title="HTML 预览"]')).toExist()
+    await browser.waitUntil(async () => {
+      return Boolean(await browser.execute(() => (window as any).__htmlPreviewMessage))
+    })
+    const message = await browser.execute(() => (window as any).__htmlPreviewMessage)
+    expect(message).toEqual({
+      source: 'markdown-html-e2e-preview',
+      text: 'Rendered inside app',
+      color: 'rgb(12, 34, 56)',
+    })
   })
 
   it('protects unsaved content during file and workspace switches', async () => {

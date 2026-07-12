@@ -15,7 +15,7 @@
 
     <iframe
       class="flex-1 w-full bg-white"
-      :src="previewSrc"
+      :srcdoc="previewDocument"
       :sandbox="previewSandbox"
       title="HTML 预览"
     />
@@ -45,9 +45,33 @@ const previewSandbox = [
   'allow-pointer-lock',
 ].join(' ')
 
-const previewSrc = computed(() => {
-  return convertFileSrc(props.file.path)
+const previewDocument = computed(() => {
+  const path = props.file.path
+  const separatorIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  const directoryPath = separatorIndex >= 0 ? path.slice(0, separatorIndex) : path
+  const baseUrl = `${convertFileSrc(directoryPath)}/`
+  const baseTag = `<base href="${escapeHtmlAttribute(baseUrl)}">`
+  const content = props.file.content
+
+  if (/<base\b[^>]*>/i.test(content)) {
+    return content.replace(/<base\b[^>]*>/i, baseTag)
+  }
+  if (/<head(?:\s[^>]*)?>/i.test(content)) {
+    return content.replace(/<head(?:\s[^>]*)?>/i, match => `${match}${baseTag}`)
+  }
+  if (/<html(?:\s[^>]*)?>/i.test(content)) {
+    return content.replace(/<html(?:\s[^>]*)?>/i, match => `${match}<head>${baseTag}</head>`)
+  }
+  return `<head>${baseTag}</head>${content}`
 })
+
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+}
 
 async function openHtmlPreview() {
   await props.openHtmlPreview()
