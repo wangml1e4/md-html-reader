@@ -52,6 +52,7 @@ import { gfm } from '@milkdown/preset-gfm'
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { prism } from '@milkdown/plugin-prism'
+import { ask } from '@tauri-apps/plugin-dialog'
 // import { nord } from '@milkdown/theme-nord'
 // import '@milkdown/theme-nord/style.css'  // 与 Tailwind 冲突，暂时禁用
 import CommentTooltip from './CommentTooltip.vue'
@@ -76,6 +77,9 @@ const lastSaved = ref<number | null>(null)
 const saveError = ref<string | null>(null)
 const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const isE2E = import.meta.env.MODE === 'e2e'
+let activeSave: Promise<void> | null = null
+
+type DiscardAction = 'switch-file' | 'switch-workspace' | 'close-window'
 
 // 评论相关状态
 const showCommentTooltip = ref(false)
@@ -201,23 +205,31 @@ function scrollToHeading(text: string, level: number) {
   editorRef.value?.scrollIntoView?.({ block: 'start' })
 }
 
-function requestFileSwitch() {
+async function requestDiscardChanges(action: DiscardAction) {
+  if (activeSave) await activeSave
   if (currentContent.value === props.file.content) return true
 
-  const shouldDiscard = confirm(
-    '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？'
-  )
-
-  if (shouldDiscard && autoSaveTimer.value) {
+  const messages: Record<DiscardAction, string> = {
+    'switch-file': '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？',
+    'switch-workspace': '当前文件有未保存的更改，切换工作区会丢失这些更改。是否继续？',
+    'close-window': '当前文件有未保存的更改，关闭应用会丢失这些更改。是否继续？',
+  }
+  const hadPendingAutoSave = autoSaveTimer.value !== null
+  if (autoSaveTimer.value) {
     clearTimeout(autoSaveTimer.value)
     autoSaveTimer.value = null
   }
+  const shouldDiscard = isE2E
+    ? confirm(messages[action])
+    : await ask(messages[action], { title: '未保存的更改', kind: 'warning' })
+
+  if (!shouldDiscard && hadPendingAutoSave) scheduleAutoSave()
 
   return shouldDiscard
 }
 
 defineExpose({
-  requestFileSwitch,
+  requestDiscardChanges,
   scrollToHeading,
 })
 
@@ -228,7 +240,8 @@ function scheduleAutoSave() {
   }
 
   autoSaveTimer.value = setTimeout(() => {
-    save()
+    autoSaveTimer.value = null
+    void save()
   }, 2000)
 }
 
@@ -236,25 +249,32 @@ function scheduleAutoSave() {
 function manualSave() {
   if (autoSaveTimer.value) {
     clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
   }
-  save()
+  void save()
 }
 
 // 保存文件
-async function save() {
-  if (isSaving.value) return
+function save(): Promise<void> {
+  if (activeSave) return activeSave
 
   isSaving.value = true
   saveError.value = null
-  try {
-    await props.saveContent(currentContent.value)
-    lastSaved.value = Date.now()
-  } catch (error) {
-    console.error('保存失败:', error)
-    saveError.value = '保存失败'
-  } finally {
-    isSaving.value = false
-  }
+  const content = currentContent.value
+  activeSave = props.saveContent(content)
+    .then(() => {
+      lastSaved.value = Date.now()
+    })
+    .catch((error) => {
+      console.error('保存失败:', error)
+      saveError.value = '保存失败'
+    })
+    .finally(() => {
+      isSaving.value = false
+      activeSave = null
+    })
+
+  return activeSave
 }
 
 // 全局快捷键监听

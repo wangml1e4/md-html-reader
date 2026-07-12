@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import MilkdownEditor from '../components/MilkdownEditor.vue'
+import { ask } from '@tauri-apps/plugin-dialog'
 
 const editorHarness = vi.hoisted(() => ({
   markdownUpdated: null as null | ((ctx: unknown, markdown: string) => void),
@@ -97,8 +98,8 @@ describe('MilkdownEditor save state', () => {
     errorSpy.mockRestore()
   })
 
-  it('存在未保存内容时由编辑器决定是否允许父级切换文件', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('存在未保存内容时根据操作类型确认是否放弃', async () => {
+    vi.mocked(ask).mockResolvedValue(false)
     const wrapper = mount(MilkdownEditor, {
       props: {
         file: { path: '/tmp/note.md', content: '# Note' },
@@ -109,13 +110,74 @@ describe('MilkdownEditor save state', () => {
 
     editorHarness.markdownUpdated?.({}, '# Edited')
 
-    expect((wrapper.vm as any).requestFileSwitch()).toBe(false)
-    expect(confirmSpy).toHaveBeenCalledWith(
-      '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？'
+    await expect((wrapper.vm as any).requestDiscardChanges('switch-file')).resolves.toBe(false)
+    await expect((wrapper.vm as any).requestDiscardChanges('switch-workspace')).resolves.toBe(false)
+    await expect((wrapper.vm as any).requestDiscardChanges('close-window')).resolves.toBe(false)
+    expect(vi.mocked(ask).mock.calls.map(call => call[0])).toEqual([
+      '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？',
+      '当前文件有未保存的更改，切换工作区会丢失这些更改。是否继续？',
+      '当前文件有未保存的更改，关闭应用会丢失这些更改。是否继续？',
+    ])
+    expect(ask).toHaveBeenLastCalledWith(
+      '当前文件有未保存的更改，关闭应用会丢失这些更改。是否继续？',
+      { title: '未保存的更改', kind: 'warning' }
     )
 
-    confirmSpy.mockReturnValue(true)
-    expect((wrapper.vm as any).requestFileSwitch()).toBe(true)
+    vi.mocked(ask).mockResolvedValue(true)
+    await expect((wrapper.vm as any).requestDiscardChanges('switch-file')).resolves.toBe(true)
+    wrapper.unmount()
+  })
+
+  it('导航确认应等待正在进行的保存完成', async () => {
+    const file = { path: '/tmp/note.md', content: '# Note' }
+    let resolveSave!: () => void
+    const saveContent = vi.fn((content: string) => new Promise<void>((resolve) => {
+      resolveSave = () => {
+        file.content = content
+        resolve()
+      }
+    }))
+    const askMock = vi.mocked(ask)
+    const wrapper = mount(MilkdownEditor, {
+      props: { file, saveContent },
+    })
+    await flushPromises()
+
+    editorHarness.markdownUpdated?.({}, '# Edited')
+    await wrapper.find('button').trigger('click')
+    const navigationPromise = (wrapper.vm as any).requestDiscardChanges('switch-file')
+
+    expect(askMock).not.toHaveBeenCalled()
+    resolveSave()
+    await expect(navigationPromise).resolves.toBe(true)
+    expect(askMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('确认框打开期间暂停自动保存，取消操作后恢复', async () => {
+    vi.useFakeTimers()
+    let resolveAsk!: (value: boolean) => void
+    vi.mocked(ask).mockImplementation(() => new Promise<boolean>((resolve) => {
+      resolveAsk = resolve
+    }))
+    const saveContent = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(MilkdownEditor, {
+      props: {
+        file: { path: '/tmp/note.md', content: '# Note' },
+        saveContent,
+      },
+    })
+    await flushPromises()
+
+    editorHarness.markdownUpdated?.({}, '# Edited')
+    const navigationPromise = (wrapper.vm as any).requestDiscardChanges('switch-file')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(saveContent).not.toHaveBeenCalled()
+
+    resolveAsk(false)
+    await expect(navigationPromise).resolves.toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(saveContent).toHaveBeenCalledWith('# Edited')
     wrapper.unmount()
   })
 

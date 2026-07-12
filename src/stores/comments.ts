@@ -24,6 +24,13 @@ export const useCommentsStore = defineStore('comments', () => {
   const currentFileHash = ref<string | null>(null)
   const currentFilePath = ref<string | null>(null)
 
+  function clearCurrentFile() {
+    list.value = []
+    currentWorkspacePath.value = null
+    currentFileHash.value = null
+    currentFilePath.value = null
+  }
+
   async function loadComments(workspacePath: string, filePath: string, currentContent?: string) {
     try {
       const hash = await invoke<string>('calculate_file_hash', {
@@ -44,10 +51,7 @@ export const useCommentsStore = defineStore('comments', () => {
         : [...comments]
     } catch (error) {
       console.error('加载评论失败:', error)
-      list.value = []
-      currentWorkspacePath.value = null
-      currentFileHash.value = null
-      currentFilePath.value = null
+      clearCurrentFile()
     }
   }
 
@@ -158,6 +162,7 @@ export const useCommentsStore = defineStore('comments', () => {
     currentWorkspacePath,
     currentFileHash,
     currentFilePath,
+    clearCurrentFile,
     loadComments,
     refreshCurrentFileHash,
     saveComment,

@@ -12,9 +12,16 @@ beforeAll(() => {
     convertFileSrc: vi.fn((filePath: string) => `asset://localhost/${encodeURIComponent(filePath)}`),
   }))
 
+  vi.mock('@tauri-apps/api/window', () => ({
+    getCurrentWindow: vi.fn(() => ({
+      onCloseRequested: vi.fn().mockResolvedValue(() => {}),
+    })),
+  }))
+
   // Mock Tauri dialog
   vi.mock('@tauri-apps/plugin-dialog', () => ({
     open: vi.fn(),
     save: vi.fn(),
+    ask: vi.fn(),
   }))
 })

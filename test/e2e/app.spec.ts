@@ -142,7 +142,7 @@ describe('MD+HTML Reader Tauri window', () => {
     expect(readFileSync(exportPath, 'utf8')).toContain('Edited keyword')
   })
 
-  it('keeps the current file when an unsaved switch is cancelled', async () => {
+  it('protects unsaved content during file and workspace switches', async () => {
     await buttonWithText('打开文件夹').click()
     await waitForBodyText('second.md')
     await buttonContaining('second.md').click()
@@ -165,6 +165,20 @@ describe('MD+HTML Reader Tauri window', () => {
     expect(confirmMessages[0]).toContain('当前文件有未保存的更改')
     await waitForBodyText('Unsaved draft')
     expect(await $('body').getText()).not.toContain('Second file content')
+    expect(readFileSync(notePath, 'utf8')).toContain('Original keyword')
+
+    await buttonWithText('打开文件夹').click()
+    const workspaceCancelMessages = await browser.execute(() => (window as any).__confirmMessages)
+    expect(workspaceCancelMessages).toHaveLength(2)
+    expect(workspaceCancelMessages[1]).toContain('切换工作区会丢失这些更改')
+    await waitForBodyText('Unsaved draft')
+
+    await browser.execute(() => {
+      window.confirm = () => true
+    })
+    await buttonWithText('打开文件夹').click()
+    await waitForBodyText('点击"打开文件夹"开始编辑')
+    expect(await $('body').getText()).not.toContain('Unsaved draft')
     expect(readFileSync(notePath, 'utf8')).toContain('Original keyword')
   })
 })

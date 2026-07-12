@@ -5,7 +5,6 @@ import { resolve } from 'node:path'
 
 const spec = process.argv[2]
 const port = Number(process.env.TAURI_WEBDRIVER_PORT || 4445)
-const maxAttempts = Number(process.env.E2E_MAX_ATTEMPTS || 3)
 const appBinary = resolve('src-tauri/target/debug/md-html-reader')
 
 if (!spec) {
@@ -56,7 +55,8 @@ async function cleanWebDriverPort() {
   for (const pid of listenerPids()) {
     const command = processCommand(pid)
     if (!command) continue
-    if (!command.includes(appBinary) && !command.endsWith('/md-html-reader')) {
+    const executable = command.split(/\s+/, 1)[0]
+    if (executable !== appBinary) {
       throw new Error(`Port ${port} is occupied by another process: ${command}`)
     }
 
@@ -91,15 +91,13 @@ function runWdio() {
   })
 }
 
+await cleanWebDriverPort()
+console.log(`[e2e] running ${spec}, port ${port}`)
 let exitCode = 1
-for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-  await cleanWebDriverPort()
-  console.log(`[e2e] running ${spec}, attempt ${attempt}/${maxAttempts}, port ${port}`)
+try {
   exitCode = await runWdio()
+} finally {
   await cleanWebDriverPort()
-
-  if (exitCode === 0) break
-  if (attempt < maxAttempts) await delay(attempt * 1000)
 }
 
 process.exit(exitCode)

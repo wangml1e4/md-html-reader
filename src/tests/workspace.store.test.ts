@@ -15,6 +15,7 @@ describe('workspace store', () => {
   describe('loadFolder', () => {
     it('应该加载文件夹并设置文件列表', async () => {
       const store = useWorkspaceStore()
+      store.currentFile = { path: '/old/file.md', content: 'old content' }
       const mockFiles = [
         { path: '/test/file1.md', name: 'file1.md', isDirectory: false },
         { path: '/test/file2.md', name: 'file2.md', isDirectory: false },
@@ -22,7 +23,7 @@ describe('workspace store', () => {
 
       vi.mocked(invoke).mockResolvedValue(mockFiles)
 
-      await store.loadFolder('/test')
+      expect(await store.loadFolder('/test')).toBe(true)
 
       expect(invoke).toHaveBeenCalledWith('list_files', {
         path: '/test',
@@ -30,17 +31,22 @@ describe('workspace store', () => {
 
       expect(store.folderPath).toBe('/test')
       expect(store.files).toEqual(mockFiles)
+      expect(store.currentFile).toBeNull()
     })
 
     it('应该处理加载失败', async () => {
       const store = useWorkspaceStore()
+      store.folderPath = '/old'
+      store.files = [{ path: '/old/file.md', name: 'file.md', type: 'file' }]
+      store.currentFile = { path: '/old/file.md', content: 'old content' }
 
       vi.mocked(invoke).mockRejectedValue(new Error('Failed to load'))
 
-      await store.loadFolder('/test')
+      expect(await store.loadFolder('/test')).toBe(false)
 
-      expect(store.folderPath).toBeNull()
-      expect(store.files).toEqual([])
+      expect(store.folderPath).toBe('/old')
+      expect(store.files).toEqual([{ path: '/old/file.md', name: 'file.md', type: 'file' }])
+      expect(store.currentFile).toEqual({ path: '/old/file.md', content: 'old content' })
     })
   })
 
@@ -52,7 +58,7 @@ describe('workspace store', () => {
       store.folderPath = '/test'
       vi.mocked(invoke).mockResolvedValue(mockContent)
 
-      await store.openFile('/test/file.md')
+      expect(await store.openFile('/test/file.md')).toBe(true)
 
       expect(invoke).toHaveBeenCalledWith('read_file', {
         workspacePath: '/test',
@@ -69,11 +75,12 @@ describe('workspace store', () => {
       const store = useWorkspaceStore()
 
       store.folderPath = '/test'
+      store.currentFile = { path: '/test/old.md', content: 'old content' }
       vi.mocked(invoke).mockRejectedValue(new Error('Read failed'))
 
-      await store.openFile('/test/file.md')
+      expect(await store.openFile('/test/file.md')).toBe(false)
 
-      expect(store.currentFile).toBeNull()
+      expect(store.currentFile).toEqual({ path: '/test/old.md', content: 'old content' })
     })
   })
 
@@ -119,6 +126,28 @@ describe('workspace store', () => {
       }
       await expect(store.saveCurrentFile('new content')).rejects.toThrow('未加载工作区')
       expect(invoke).not.toHaveBeenCalled()
+    })
+
+    it('保存完成时不修改后来打开的文件状态', async () => {
+      const store = useWorkspaceStore()
+      store.folderPath = '/test'
+      store.currentFile = { path: '/test/first.md', content: 'first old' }
+      let resolveWrite!: () => void
+      vi.mocked(invoke).mockImplementation(() => new Promise<void>((resolve) => {
+        resolveWrite = resolve
+      }))
+
+      const savePromise = store.saveCurrentFile('first saved')
+      store.currentFile = { path: '/test/second.md', content: 'second content' }
+      resolveWrite()
+      await savePromise
+
+      expect(invoke).toHaveBeenCalledWith('write_file', {
+        workspacePath: '/test',
+        path: '/test/first.md',
+        content: 'first saved',
+      })
+      expect(store.currentFile).toEqual({ path: '/test/second.md', content: 'second content' })
     })
   })
 })

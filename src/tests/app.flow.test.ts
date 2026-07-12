@@ -4,12 +4,29 @@ import { createPinia } from 'pinia'
 import App from '../App.vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import { useWorkspaceStore } from '../stores/workspace'
+import { useCommentsStore } from '../stores/comments'
 
 const milkdownLifecycle = vi.hoisted(() => ({
   mountCount: 0,
   unmountCount: 0,
   switchRequests: 0,
   allowSwitch: true,
+  actions: [] as string[],
+}))
+
+const windowLifecycle = vi.hoisted(() => ({
+  closeHandler: null as null | ((event: { preventDefault: () => void }) => Promise<void>),
+  unlisten: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({
+    onCloseRequested: async (handler: (event: { preventDefault: () => void }) => Promise<void>) => {
+      windowLifecycle.closeHandler = handler
+      return windowLifecycle.unlisten
+    },
+  }),
 }))
 
 vi.mock('../components/FileTree.vue', () => ({
@@ -44,8 +61,9 @@ vi.mock('../components/MilkdownEditor.vue', () => ({
     },
     setup(_props: unknown, { expose }: { expose: (value: unknown) => void }) {
       expose({
-        requestFileSwitch() {
+        async requestDiscardChanges(action: string) {
           milkdownLifecycle.switchRequests++
+          milkdownLifecycle.actions.push(action)
           return milkdownLifecycle.allowSwitch
         },
         scrollToHeading() {},
@@ -150,6 +168,9 @@ describe('App core user flow', () => {
     milkdownLifecycle.unmountCount = 0
     milkdownLifecycle.switchRequests = 0
     milkdownLifecycle.allowSwitch = true
+    milkdownLifecycle.actions = []
+    windowLifecycle.closeHandler = null
+    windowLifecycle.unlisten.mockReset()
   })
 
   it('覆盖打开文件夹、打开文件、保存、评论、重开、搜索和导出 HTML', async () => {
@@ -317,6 +338,7 @@ describe('App core user flow', () => {
 
     expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# Second')
     expect(milkdownLifecycle.switchRequests).toBe(1)
+    expect(milkdownLifecycle.actions).toEqual(['switch-file'])
     expect(milkdownLifecycle.mountCount).toBe(2)
     expect(milkdownLifecycle.unmountCount).toBe(1)
   })
@@ -349,11 +371,87 @@ describe('App core user flow', () => {
     await flushPromises()
 
     expect(milkdownLifecycle.switchRequests).toBe(1)
+    expect(milkdownLifecycle.actions).toEqual(['switch-file'])
     expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# First')
     expect(milkdownLifecycle.mountCount).toBe(1)
     expect(invoke).not.toHaveBeenCalledWith('read_file', expect.objectContaining({
       path: '/tmp/workspace/second.md',
     }))
+  })
+
+  it('切换工作区应经过未保存确认，取消时保留原状态，确认后清理旧状态', async () => {
+    vi.mocked(open).mockResolvedValueOnce('/tmp/workspace').mockResolvedValue('/tmp/other')
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return args.path === '/tmp/other'
+          ? [{ name: 'other.md', path: '/tmp/other/other.md', type: 'file', extension: '.md' }]
+          : [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Note'
+      if (command === 'calculate_file_hash') return 'hash'
+      if (command === 'load_comments') return []
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    const workspace = useWorkspaceStore(pinia)
+    const comments = useCommentsStore(pinia)
+    comments.list = [{
+      id: 'comment-1', fileHash: 'hash', anchor: { quote: 'Note', offset: 0, length: 4 },
+      content: 'comment', status: 'open', createdAt: 1, updatedAt: 1,
+    }]
+    milkdownLifecycle.allowSwitch = false
+
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    expect(workspace.folderPath).toBe('/tmp/workspace')
+    expect(workspace.currentFile?.path).toBe('/tmp/workspace/note.md')
+    expect(comments.list).toHaveLength(1)
+
+    milkdownLifecycle.allowSwitch = true
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    expect(milkdownLifecycle.actions).toEqual(['switch-workspace', 'switch-workspace'])
+    expect(workspace.folderPath).toBe('/tmp/other')
+    expect(workspace.currentFile).toBeNull()
+    expect(comments.list).toEqual([])
+  })
+
+  it('关闭窗口时取消应阻止关闭，允许后卸载监听器', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'list_files') return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file' }]
+      if (command === 'read_file') return '# Note'
+      if (command === 'calculate_file_hash') return 'hash'
+      if (command === 'load_comments') return []
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    const preventDefault = vi.fn()
+    milkdownLifecycle.allowSwitch = false
+    await windowLifecycle.closeHandler?.({ preventDefault })
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(milkdownLifecycle.actions).toEqual(['close-window'])
+
+    milkdownLifecycle.allowSwitch = true
+    await windowLifecycle.closeHandler?.({ preventDefault })
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(milkdownLifecycle.actions).toEqual(['close-window', 'close-window'])
+
+    wrapper.unmount()
+    expect(windowLifecycle.unlisten).toHaveBeenCalledOnce()
   })
 
   it('左侧工具条支持筛选、显示标题和定位当前文件', async () => {

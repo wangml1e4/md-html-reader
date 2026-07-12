@@ -11,6 +11,29 @@ describe('comments store', () => {
     vi.clearAllMocks()
   })
 
+  it('clearCurrentFile 应清空评论和当前文件元数据', () => {
+    const store = useCommentsStore()
+    store.list = [{
+      id: 'comment-1',
+      fileHash: 'hash',
+      anchor: { quote: 'text', offset: 0, length: 4 },
+      content: 'comment',
+      status: 'open',
+      createdAt: 1,
+      updatedAt: 1,
+    }]
+    store.currentWorkspacePath = '/test'
+    store.currentFileHash = 'hash'
+    store.currentFilePath = '/test/note.md'
+
+    store.clearCurrentFile()
+
+    expect(store.list).toEqual([])
+    expect(store.currentWorkspacePath).toBeNull()
+    expect(store.currentFileHash).toBeNull()
+    expect(store.currentFilePath).toBeNull()
+  })
+
   afterEach(() => {
     vi.useRealTimers()
   })

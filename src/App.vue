@@ -189,6 +189,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { useWorkspaceStore } from './stores/workspace'
 import { useCommentsStore } from './stores/comments'
@@ -226,7 +227,7 @@ interface TranslationResult {
   service: TranslationService
 }
 interface EditorHandle {
-  requestFileSwitch: () => boolean
+  requestDiscardChanges: (action: 'switch-file' | 'switch-workspace' | 'close-window') => Promise<boolean>
   scrollToHeading: (text: string, level: number) => void
 }
 
@@ -246,6 +247,8 @@ const translationTranslated = ref('')
 const translationError = ref<string | null>(null)
 const isExporting = ref(false)
 const exportMessage = ref<string | null>(null)
+let unlistenCloseRequested: (() => void) | null = null
+let appUnmounted = false
 const isE2E = import.meta.env.MODE === 'e2e'
 const e2eWorkspacePath = '/tmp/markdown-html-e2e-workspace'
 const e2eExportPath = `${e2eWorkspacePath}/note.html`
@@ -258,19 +261,17 @@ const currentIsHtml = computed(() => {
 
 async function openFolder() {
   try {
-    if (isE2E) {
-      await workspace.loadFolder(e2eWorkspacePath)
-      return
-    }
-
-    const selected = await open({
-      directory: true,
-      multiple: false,
-    })
+    const selected = isE2E
+      ? e2eWorkspacePath
+      : await open({
+          directory: true,
+          multiple: false,
+        })
 
     // plugin-dialog 目录模式返回 string | null
     if (selected && typeof selected === 'string') {
-      await workspace.loadFolder(selected)
+      if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-workspace'))) return
+      if (await workspace.loadFolder(selected)) comments.clearCurrentFile()
     }
   } catch (error) {
     console.error('打开文件夹失败:', error)
@@ -280,9 +281,9 @@ async function openFolder() {
 async function openFile(filePath: string) {
   if (!workspace.folderPath) return
   if (workspace.currentFile?.path === filePath) return
-  if (editorRef.value && !editorRef.value.requestFileSwitch()) return
+  if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-file'))) return
 
-  await workspace.openFile(filePath)
+  if (!(await workspace.openFile(filePath))) return
   await comments.loadComments(workspace.folderPath, filePath, workspace.currentFile?.content)
 }
 
@@ -312,9 +313,10 @@ function handleOutlineSelect(heading: OutlineHeading) {
 
 async function saveFile(content: string) {
   const filePath = workspace.currentFile?.path
+  const folderPath = workspace.folderPath
   await workspace.saveCurrentFile(content)
-  if (workspace.folderPath && filePath) {
-    await comments.refreshCurrentFileHash(workspace.folderPath, filePath)
+  if (folderPath && filePath && workspace.folderPath === folderPath && workspace.currentFile?.path === filePath) {
+    await comments.refreshCurrentFileHash(folderPath, filePath)
   }
 }
 
@@ -430,11 +432,20 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('keydown', handleKeyDown)
+  const unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
+    if (editorRef.value && !(await editorRef.value.requestDiscardChanges('close-window'))) {
+      event.preventDefault()
+    }
+  })
+  if (appUnmounted) unlisten()
+  else unlistenCloseRequested = unlisten
 })
 
 onUnmounted(() => {
+  appUnmounted = true
   window.removeEventListener('keydown', handleKeyDown)
+  unlistenCloseRequested?.()
 })
 </script>
