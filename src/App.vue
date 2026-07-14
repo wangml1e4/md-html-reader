@@ -7,14 +7,14 @@
         <button
           @click="openSearch('files')"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-          :disabled="!workspace.folderPath"
+          :disabled="!workspace.folderPath || isMarkdownTranslating"
         >
           搜索文件
         </button>
         <button
           @click="openSearch('content')"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-          :disabled="!workspace.folderPath"
+          :disabled="!workspace.folderPath || isMarkdownTranslating"
         >
           搜索内容
         </button>
@@ -34,13 +34,29 @@
           <option value="tencent">腾讯翻译</option>
         </select>
         <button
+          @click="translateMarkdownFile"
+          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+          :disabled="!currentIsMarkdown || isMarkdownTranslating"
+        >
+          {{ isMarkdownTranslating ? '翻译中...' : '一键翻译为中文副本' }}
+        </button>
+        <button
           @click="openFolder"
-          class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+          class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+          :disabled="isMarkdownTranslating"
         >
           打开文件夹
         </button>
       </div>
     </header>
+
+    <div
+      v-if="markdownTranslationMessage || markdownTranslationError"
+      class="px-4 py-2 text-sm border-b"
+      :class="markdownTranslationError ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-700 border-green-100'"
+    >
+      {{ markdownTranslationError || markdownTranslationMessage }}
+    </div>
 
     <!-- 主工作区 -->
     <main class="flex-1 flex overflow-hidden">
@@ -102,6 +118,7 @@
           :display-mode="displayMode"
           :current-path="workspace.currentFile?.path || null"
           :locate-token="locateToken"
+          :disabled="isMarkdownTranslating"
           @select="openFile"
         />
       </aside>
@@ -226,8 +243,14 @@ interface TranslationResult {
   targetLang: string
   service: TranslationService
 }
+interface MarkdownTranslationResult {
+  outputPath: string
+  translatedCharacters: number
+  translatedSegments: number
+}
 interface EditorHandle {
   requestDiscardChanges: (action: 'switch-file' | 'switch-workspace' | 'close-window') => Promise<boolean>
+  saveCurrentContent: () => Promise<void>
   scrollToHeading: (text: string, level: number) => void
 }
 
@@ -247,6 +270,9 @@ const translationTranslated = ref('')
 const translationError = ref<string | null>(null)
 const isExporting = ref(false)
 const exportMessage = ref<string | null>(null)
+const isMarkdownTranslating = ref(false)
+const markdownTranslationMessage = ref<string | null>(null)
+const markdownTranslationError = ref<string | null>(null)
 let unlistenCloseRequested: (() => void) | null = null
 let appUnmounted = false
 const isE2E = import.meta.env.MODE === 'e2e'
@@ -260,6 +286,8 @@ const currentIsHtml = computed(() => {
 })
 
 async function openFolder() {
+  if (isMarkdownTranslating.value) return
+
   try {
     const selected = isE2E
       ? e2eWorkspacePath
@@ -279,6 +307,7 @@ async function openFolder() {
 }
 
 async function openFile(filePath: string) {
+  if (isMarkdownTranslating.value) return
   if (!workspace.folderPath) return
   if (workspace.currentFile?.path === filePath) return
   if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-file'))) return
@@ -292,6 +321,7 @@ async function openFileFromSearch(filePath: string) {
 }
 
 function openSearch(mode: SearchMode) {
+  if (isMarkdownTranslating.value) return
   if (!workspace.folderPath) return
   searchMode.value = mode
   showSearchPanel.value = true
@@ -351,6 +381,50 @@ async function exportHtml() {
       : `HTML 导出失败：${message}`
   } finally {
     isExporting.value = false
+  }
+}
+
+async function translateMarkdownFile() {
+  const workspacePath = workspace.folderPath
+  const sourceFile = workspace.currentFile
+  const service = translationService.value
+  if (!workspacePath || !sourceFile || !currentIsMarkdown.value || isMarkdownTranslating.value) return
+
+  isMarkdownTranslating.value = true
+  markdownTranslationMessage.value = null
+  markdownTranslationError.value = null
+
+  try {
+    if (!editorRef.value) {
+      throw new Error('编辑器尚未就绪，请稍后重试')
+    }
+    await editorRef.value.saveCurrentContent()
+    const result = await invoke<MarkdownTranslationResult>('translate_markdown_to_chinese', {
+      service,
+      workspacePath,
+      filePath: sourceFile.path,
+    })
+
+    if (!(await workspace.loadFolder(workspacePath))) {
+      throw new Error('刷新文件列表失败')
+    }
+    comments.clearCurrentFile()
+    if (!(await workspace.openFile(result.outputPath))) {
+      throw new Error('打开中文翻译副本失败')
+    }
+    await comments.loadComments(
+      workspacePath,
+      result.outputPath,
+      workspace.currentFile?.content
+    )
+
+    const outputName = result.outputPath.split('/').pop() || result.outputPath
+    markdownTranslationMessage.value = `已生成中文翻译副本：${outputName}`
+  } catch (error) {
+    console.error('生成中文翻译副本失败:', error)
+    markdownTranslationError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    isMarkdownTranslating.value = false
   }
 }
 

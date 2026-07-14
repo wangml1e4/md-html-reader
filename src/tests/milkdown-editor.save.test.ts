@@ -98,6 +98,37 @@ describe('MilkdownEditor save state', () => {
     errorSpy.mockRestore()
   })
 
+  it('全文翻译前保存会等待写入并将失败传递给调用方', async () => {
+    let resolveSave!: () => void
+    const file = { path: '/tmp/note.md', content: '# Note' }
+    const saveContent = vi.fn((content: string) => new Promise<void>((resolve) => {
+      resolveSave = () => {
+        file.content = content
+        resolve()
+      }
+    }))
+    const wrapper = mount(MilkdownEditor, {
+      props: { file, saveContent },
+    })
+    await flushPromises()
+    editorHarness.markdownUpdated?.({}, '# Edited')
+
+    const savePromise = (wrapper.vm as any).saveCurrentContent()
+    expect(saveContent).toHaveBeenCalledWith('# Edited')
+    resolveSave()
+    await expect(savePromise).resolves.toBeUndefined()
+
+    const failingWrapper = mount(MilkdownEditor, {
+      props: { file: { path: '/tmp/fail.md', content: '# Fail' }, saveContent: vi.fn().mockRejectedValue(new Error('write failed')) },
+    })
+    await flushPromises()
+    editorHarness.markdownUpdated?.({}, '# Edited fail')
+    await expect((failingWrapper.vm as any).saveCurrentContent()).rejects.toThrow('write failed')
+
+    wrapper.unmount()
+    failingWrapper.unmount()
+  })
+
   it('存在未保存内容时根据操作类型确认是否放弃', async () => {
     vi.mocked(ask).mockResolvedValue(false)
     const wrapper = mount(MilkdownEditor, {

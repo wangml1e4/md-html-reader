@@ -11,6 +11,8 @@ const milkdownLifecycle = vi.hoisted(() => ({
   mountCount: 0,
   unmountCount: 0,
   switchRequests: 0,
+  saveCurrentContentRequests: 0,
+  saveCurrentContentError: null as Error | null,
   allowSwitch: true,
   actions: [] as string[],
 }))
@@ -65,6 +67,12 @@ vi.mock('../components/MilkdownEditor.vue', () => ({
           milkdownLifecycle.switchRequests++
           milkdownLifecycle.actions.push(action)
           return milkdownLifecycle.allowSwitch
+        },
+        async saveCurrentContent() {
+          milkdownLifecycle.saveCurrentContentRequests++
+          if (milkdownLifecycle.saveCurrentContentError) {
+            throw milkdownLifecycle.saveCurrentContentError
+          }
         },
         scrollToHeading() {},
       })
@@ -167,6 +175,8 @@ describe('App core user flow', () => {
     milkdownLifecycle.mountCount = 0
     milkdownLifecycle.unmountCount = 0
     milkdownLifecycle.switchRequests = 0
+    milkdownLifecycle.saveCurrentContentRequests = 0
+    milkdownLifecycle.saveCurrentContentError = null
     milkdownLifecycle.allowSwitch = true
     milkdownLifecycle.actions = []
     windowLifecycle.closeHandler = null
@@ -625,6 +635,171 @@ describe('App core user flow', () => {
     expect(wrapper.get('[data-testid="translation-card"]').text()).toContain('ollama')
   })
 
+  it('保存当前 Markdown 后生成并打开中文翻译副本', async () => {
+    let translated = false
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return translated
+          ? [
+              { name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' },
+              { name: 'note.zh.md', path: '/tmp/workspace/note.zh.md', type: 'file', extension: '.md' },
+            ]
+          : [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+
+      if (command === 'read_file') {
+        return args.path === '/tmp/workspace/note.zh.md' ? '# 你好' : '# Hello'
+      }
+
+      if (command === 'calculate_file_hash') {
+        return args.filePath === '/tmp/workspace/note.zh.md' ? 'hash-zh' : 'hash-note'
+      }
+
+      if (command === 'load_comments') {
+        return []
+      }
+
+      if (command === 'translate_markdown_to_chinese') {
+        expect(args).toEqual({
+          service: 'ollama',
+          workspacePath: '/tmp/workspace',
+          filePath: '/tmp/workspace/note.md',
+        })
+        translated = true
+        return {
+          outputPath: '/tmp/workspace/note.zh.md',
+          translatedCharacters: 5,
+          translatedSegments: 1,
+        }
+      }
+
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, {
+      global: { plugins: [createPinia()] },
+    })
+
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find(button => button.text() === '一键翻译为中文副本')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(milkdownLifecycle.saveCurrentContentRequests).toBe(1)
+    expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# 你好')
+    expect(wrapper.text()).toContain('已生成中文翻译副本：note.zh.md')
+  })
+
+  it('全文翻译期间不允许文件或工作区导航覆盖结果', async () => {
+    let translated = false
+    let resolveTranslation!: (value: {
+      outputPath: string
+      translatedCharacters: number
+      translatedSegments: number
+    }) => void
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        const files = [
+          { name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' },
+          { name: 'other.md', path: '/tmp/workspace/other.md', type: 'file', extension: '.md' },
+        ]
+        return translated
+          ? [...files, { name: 'note.zh.md', path: '/tmp/workspace/note.zh.md', type: 'file', extension: '.md' }]
+          : files
+      }
+      if (command === 'read_file') {
+        if (args.path === '/tmp/workspace/note.zh.md') return '# 你好'
+        if (args.path === '/tmp/workspace/other.md') return '# Other'
+        return '# Hello'
+      }
+      if (command === 'calculate_file_hash') return 'hash'
+      if (command === 'load_comments') return []
+      if (command === 'translate_markdown_to_chinese') {
+        return new Promise(resolve => {
+          resolveTranslation = resolve
+        })
+      }
+
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+
+    const fileButtons = wrapper.findAll('[data-testid="file-item"]')
+    await fileButtons[0].trigger('click')
+    await flushPromises()
+
+    const translateButton = wrapper.findAll('button').find(button => button.text() === '一键翻译为中文副本')!
+    await translateButton.trigger('click')
+    await flushPromises()
+
+    expect((wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.element as HTMLButtonElement).disabled).toBe(true)
+    await fileButtons[1].trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# Hello')
+    expect(milkdownLifecycle.switchRequests).toBe(0)
+    expect(open).toHaveBeenCalledTimes(1)
+
+    translated = true
+    resolveTranslation({
+      outputPath: '/tmp/workspace/note.zh.md',
+      translatedCharacters: 5,
+      translatedSegments: 1,
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# 你好')
+  })
+
+  it('全文翻译失败时保留当前文件并显示错误', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+
+      if (command === 'read_file') return '# Hello'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') return []
+      if (command === 'translate_markdown_to_chinese') {
+        throw new Error('中文翻译副本已存在，未覆盖原有文件')
+      }
+
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, {
+      global: { plugins: [createPinia()] },
+    })
+
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find(button => button.text() === '一键翻译为中文副本')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# Hello')
+    expect(wrapper.text()).toContain('中文翻译副本已存在，未覆盖原有文件')
+  })
+
   it('HTML 文件可调用默认浏览器预览命令', async () => {
     vi.mocked(open).mockResolvedValue('/tmp/workspace')
     vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
@@ -676,6 +851,10 @@ describe('App core user flow', () => {
     expect(wrapper.find('[data-testid="editor"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="html-renderer"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="rendered-html"]').text()).toContain('Page')
+    expect(
+      wrapper.findAll('button').find(button => button.text() === '一键翻译为中文副本')!
+        .attributes('disabled')
+    ).toBeDefined()
 
     await wrapper.get('[data-testid="preview-html"]').trigger('click')
     await flushPromises()

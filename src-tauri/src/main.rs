@@ -32,6 +32,7 @@ fn main() {
             search::search_content,
             search::export_as_html,
             translation::translate_text,
+            translation::translate_markdown_to_chinese,
             browser_preview::open_html_in_default_browser,
         ])
         .run(tauri::generate_context!())

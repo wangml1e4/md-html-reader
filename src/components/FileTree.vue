@@ -23,6 +23,7 @@
             :display-mode="displayMode"
             :current-path="currentPath"
             :locate-token="locateToken"
+            :disabled="disabled"
             @select="handleSelect"
           />
         </div>
@@ -34,8 +35,9 @@
         :ref="(el) => setItemRef(file.path, el)"
         :data-file-path="file.path"
         :title="file.path"
+        :disabled="disabled"
         class="w-full text-left px-2 py-1 hover:bg-blue-50 rounded flex items-center gap-1"
-        :class="{ 'bg-blue-100': isSelected(file.path) }"
+        :class="{ 'bg-blue-100': isSelected(file.path), 'disabled:cursor-not-allowed': disabled }"
       >
         <span class="text-gray-500">{{ getIcon(file.extension) }}</span>
         <span class="text-sm">{{ getDisplayName(file) }}</span>
@@ -57,11 +59,13 @@ const props = withDefaults(defineProps<{
   displayMode?: DisplayMode
   currentPath?: string | null
   locateToken?: number
+  disabled?: boolean
 }>(), {
   filter: 'all',
   displayMode: 'filename',
   currentPath: null,
   locateToken: 0,
+  disabled: false,
 })
 
 const emit = defineEmits<{
@@ -94,6 +98,7 @@ function isExpanded(path: string) {
 }
 
 function handleSelect(path: string) {
+  if (props.disabled) return
   selected.value = path
   emit('select', path)
 }

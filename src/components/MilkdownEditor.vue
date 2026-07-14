@@ -206,7 +206,13 @@ function scrollToHeading(text: string, level: number) {
 }
 
 async function requestDiscardChanges(action: DiscardAction) {
-  if (activeSave) await activeSave
+  if (activeSave) {
+    try {
+      await activeSave
+    } catch {
+      return false
+    }
+  }
   if (currentContent.value === props.file.content) return true
 
   const messages: Record<DiscardAction, string> = {
@@ -230,6 +236,7 @@ async function requestDiscardChanges(action: DiscardAction) {
 
 defineExpose({
   requestDiscardChanges,
+  saveCurrentContent,
   scrollToHeading,
 })
 
@@ -241,7 +248,7 @@ function scheduleAutoSave() {
 
   autoSaveTimer.value = setTimeout(() => {
     autoSaveTimer.value = null
-    void save()
+    void save().catch(() => {})
   }, 2000)
 }
 
@@ -251,7 +258,22 @@ function manualSave() {
     clearTimeout(autoSaveTimer.value)
     autoSaveTimer.value = null
   }
-  void save()
+  void save().catch(() => {})
+}
+
+async function saveCurrentContent() {
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
+
+  if (activeSave) {
+    await activeSave
+  }
+
+  if (currentContent.value !== props.file.content) {
+    await save()
+  }
 }
 
 // 保存文件
@@ -268,6 +290,7 @@ function save(): Promise<void> {
     .catch((error) => {
       console.error('保存失败:', error)
       saveError.value = '保存失败'
+      throw error
     })
     .finally(() => {
       isSaving.value = false

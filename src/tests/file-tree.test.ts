@@ -81,4 +81,18 @@ describe('FileTree', () => {
     expect(wrapper.text()).toContain('note.md')
     expect(wrapper.get('[data-file-path="/tmp/workspace/docs/note.md"]').classes()).toContain('bg-blue-100')
   })
+
+  it('禁用时不触发文件选择', async () => {
+    const wrapper = mount(FileTree, {
+      props: {
+        files: [files[0].children![0]],
+        disabled: true,
+      },
+    })
+
+    const button = wrapper.get('[data-file-path="/tmp/workspace/docs/note.md"]')
+    expect((button.element as HTMLButtonElement).disabled).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.emitted('select')).toBeUndefined()
+  })
 })
