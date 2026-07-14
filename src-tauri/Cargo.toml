@@ -18,6 +18,8 @@ sha2 = "0.10"
 walkdir = "2.4"
 pulldown-cmark = "0.13"
 hmac = "0.12"
+encoding_rs = "0.8"
+percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 time = { version = "0.3", features = ["formatting", "macros"] }
 tauri-plugin-wdio = { version = "1", optional = true }

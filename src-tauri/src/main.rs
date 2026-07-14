@@ -4,12 +4,17 @@
 mod browser_preview;
 mod comments;
 mod fs_handler;
+mod html_preview_protocol;
 mod path_guard;
 mod search;
 mod translation;
 
 fn main() {
     let builder = tauri::Builder::default()
+        .manage(html_preview_protocol::PreviewProtocolRoots::default())
+        .register_uri_scheme_protocol("preview", |context, request| {
+            html_preview_protocol::handle(context.app_handle(), request)
+        })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init());
 
@@ -68,7 +73,7 @@ mod e2e_tests {
         let root = root.to_string_lossy().to_string();
         let file_path = file_path.to_string_lossy().to_string();
 
-        let files = fs_handler::list_files(root.clone()).unwrap();
+        let files = fs_handler::list_workspace_files(root.clone()).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].name, "note.md");
 

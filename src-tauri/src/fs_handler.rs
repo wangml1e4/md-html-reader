@@ -1,8 +1,9 @@
+use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use tauri::command;
+use tauri::{command, AppHandle, Manager};
 
 use crate::path_guard::{
     document_file_in_workspace, is_ignored_name, is_supported_document_path, workspace_root,
@@ -84,7 +85,7 @@ mod tests {
                 .unwrap();
         }
 
-        let files = list_files(workspace.to_string_lossy().to_string()).unwrap();
+        let files = list_workspace_files(workspace.to_string_lossy().to_string()).unwrap();
         let names: Vec<_> = files.iter().map(|item| item.name.as_str()).collect();
 
         assert_eq!(names, vec!["visible.md"]);
@@ -110,7 +111,7 @@ mod tests {
         )
         .unwrap();
 
-        let files = list_files(workspace.to_string_lossy().to_string()).unwrap();
+        let files = list_workspace_files(workspace.to_string_lossy().to_string()).unwrap();
         let markdown = files.iter().find(|item| item.name == "note.md").unwrap();
         let html = files.iter().find(|item| item.name == "page.html").unwrap();
         let fallback = files
@@ -122,10 +123,61 @@ mod tests {
         assert_eq!(html.title.as_deref(), Some("HTML Title"));
         assert_eq!(fallback.title.as_deref(), Some("Heading Fallback"));
     }
+
+    #[test]
+    fn read_file_decodes_declared_legacy_html() {
+        let workspace = unique_test_root("legacy-encoding");
+        fs::create_dir_all(&workspace).unwrap();
+        let page = workspace.join("legacy.htm");
+        let (encoded, _, _) = encoding_rs::GBK
+            .encode("<html><head><meta charset=\"gbk\"></head><body>中文页面</body></html>");
+        fs::write(&page, encoded.as_ref()).unwrap();
+
+        let content = read_file(
+            workspace.to_string_lossy().to_string(),
+            page.to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        assert!(content.contains("中文页面"));
+    }
+
+    #[test]
+    fn read_file_decodes_utf16_bom() {
+        let workspace = unique_test_root("utf16-encoding");
+        fs::create_dir_all(&workspace).unwrap();
+        let page = workspace.join("legacy.xhtml");
+        let encoded = "<html><body>UTF-16 页面</body></html>"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let mut bytes = vec![0xFF, 0xFE];
+        bytes.extend_from_slice(&encoded);
+        fs::write(&page, bytes).unwrap();
+
+        let content = read_file(
+            workspace.to_string_lossy().to_string(),
+            page.to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        assert!(content.contains("UTF-16 页面"));
+    }
 }
 
 #[command]
-pub fn list_files(path: String) -> Result<Vec<FileItem>, String> {
+pub fn list_files(app: AppHandle, path: String) -> Result<Vec<FileItem>, String> {
+    let root_path = workspace_root(&path)?;
+    let files = scan_directory(&root_path)?;
+    app.state::<tauri::Scopes>()
+        .allow_directory(&root_path, true)
+        .map_err(|error| format!("授权 HTML 预览资源失败: {}", error))?;
+    crate::html_preview_protocol::allow_workspace(&app, &root_path)?;
+    Ok(files)
+}
+
+#[cfg(test)]
+pub fn list_workspace_files(path: String) -> Result<Vec<FileItem>, String> {
     let root_path = workspace_root(&path)?;
     scan_directory(&root_path)
 }
@@ -162,7 +214,7 @@ fn scan_directory(path: &Path) -> Result<Vec<FileItem>, String> {
                 .and_then(|e| e.to_str())
                 .map(|s| format!(".{}", s));
 
-            // 只包含 .md 和 .html 文件
+            // 只包含受支持的 Markdown 和 HTML 文件
             if is_supported_document_path(&path) {
                 items.push(FileItem {
                     name,
@@ -189,7 +241,7 @@ fn scan_directory(path: &Path) -> Result<Vec<FileItem>, String> {
 #[command]
 pub fn read_file(workspace_path: String, path: String) -> Result<String, String> {
     let path = document_file_in_workspace(&workspace_path, &path)?;
-    fs::read_to_string(&path).map_err(|e| format!("读取文件失败: {}", e))
+    read_document_content(&path)
 }
 
 #[command]
@@ -200,9 +252,14 @@ pub fn write_file(workspace_path: String, path: String, content: String) -> Resu
 
 fn extract_document_title(path: &Path) -> Option<String> {
     let content = read_title_sample(path)?;
-    match path.extension().and_then(|extension| extension.to_str()) {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("md") => extract_markdown_title(&content),
-        Some("html") => extract_html_title(&content),
+        Some("html" | "htm" | "xhtml") => extract_html_title(&content),
         _ => None,
     }
 }
@@ -212,7 +269,65 @@ fn read_title_sample(path: &Path) -> Option<String> {
     let mut buffer = vec![0; 64 * 1024];
     let bytes_read = file.read(&mut buffer).ok()?;
     buffer.truncate(bytes_read);
-    String::from_utf8(buffer).ok()
+    Some(decode_document_bytes(&buffer))
+}
+
+pub fn read_document_content(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|error| format!("读取文件失败: {}", error))?;
+    Ok(decode_document_bytes(&bytes))
+}
+
+fn decode_document_bytes(bytes: &[u8]) -> String {
+    if let Some(content) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(content).into_owned();
+    }
+    if let Some(content) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        return UTF_16LE.decode_without_bom_handling(content).0.into_owned();
+    }
+    if let Some(content) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        return UTF_16BE.decode_without_bom_handling(content).0.into_owned();
+    }
+    if let Ok(content) = std::str::from_utf8(bytes) {
+        return content.to_string();
+    }
+
+    if looks_like_utf16le(bytes) {
+        return UTF_16LE.decode_without_bom_handling(bytes).0.into_owned();
+    }
+    if looks_like_utf16be(bytes) {
+        return UTF_16BE.decode_without_bom_handling(bytes).0.into_owned();
+    }
+
+    let encoding = declared_encoding(bytes).unwrap_or(UTF_8);
+    encoding.decode(bytes).0.into_owned()
+}
+
+fn looks_like_utf16le(bytes: &[u8]) -> bool {
+    let pairs = bytes.chunks_exact(2);
+    let pair_count = pairs.len();
+    pair_count >= 4 && pairs.filter(|pair| pair[1] == 0).count() * 2 >= pair_count
+}
+
+fn looks_like_utf16be(bytes: &[u8]) -> bool {
+    let pairs = bytes.chunks_exact(2);
+    let pair_count = pairs.len();
+    pair_count >= 4 && pairs.filter(|pair| pair[0] == 0).count() * 2 >= pair_count
+}
+
+fn declared_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
+    let sample = String::from_utf8_lossy(&bytes[..bytes.len().min(8 * 1024)]).to_ascii_lowercase();
+    let charset_start = sample.find("charset")? + "charset".len();
+    let value = sample[charset_start..]
+        .trim_start_matches(|character: char| character.is_ascii_whitespace() || character == '=')
+        .trim_start_matches(['\'', '"']);
+    let label = value
+        .chars()
+        .take_while(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+        .collect::<String>();
+
+    (!label.is_empty())
+        .then(|| Encoding::for_label(label.as_bytes()))
+        .flatten()
 }
 
 fn extract_markdown_title(content: &str) -> Option<String> {

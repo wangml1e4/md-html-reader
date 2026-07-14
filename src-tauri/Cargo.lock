@@ -1939,7 +1939,9 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 name = "md-html-reader"
 version = "0.9.0"
 dependencies = [
+ "encoding_rs",
  "hmac",
+ "percent-encoding",
  "pulldown-cmark",
  "reqwest 0.12.28",
  "serde",

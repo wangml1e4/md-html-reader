@@ -3,6 +3,21 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:default"
+    "core:webview:allow-create-webview-window",
+    "dialog:default",
+    "allow-list-files",
+    "allow-read-file",
+    "allow-write-file",
+    "allow-calculate-file-hash",
+    "allow-load-comments",
+    "allow-save-comment",
+    "allow-delete-comment",
+    "allow-update-comment",
+    "allow-search-files",
+    "allow-search-content",
+    "allow-export-as-html",
+    "allow-translate-text",
+    "allow-translate-markdown-to-chinese",
+    "allow-open-html-in-default-browser"
   ]
 }

@@ -144,7 +144,7 @@
           <!-- 提示 -->
           <div v-if="!query" class="py-12 text-center text-gray-400">
             <div class="text-sm">输入关键词搜索文件内容</div>
-            <div class="text-xs mt-1">将在所有 .md 和 .html 文件中搜索</div>
+            <div class="text-xs mt-1">将在所有 Markdown、.html、.htm 与 .xhtml 文件中搜索</div>
           </div>
         </div>
       </div>
@@ -284,8 +284,9 @@ function close() {
 }
 
 function getFileIcon(fileName: string): string {
-  if (fileName.endsWith('.md')) return '📝'
-  if (fileName.endsWith('.html')) return '🌐'
+  const normalizedName = fileName.toLowerCase()
+  if (normalizedName.endsWith('.md')) return '📝'
+  if (['.html', '.htm', '.xhtml'].some(extension => normalizedName.endsWith(extension))) return '🌐'
   return '📄'
 }
 

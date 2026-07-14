@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tauri::command;
 
-use crate::path_guard::document_file_in_workspace;
+use crate::path_guard::{document_file_in_workspace, is_html_document_path};
 
 #[command]
 pub fn open_html_in_default_browser(
@@ -15,11 +15,7 @@ pub fn open_html_in_default_browser(
 
 fn validate_html_preview_path(workspace_path: &str, file_path: &str) -> Result<PathBuf, String> {
     let file_path = document_file_in_workspace(workspace_path, file_path)?;
-    if file_path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        != Some("html")
-    {
+    if !is_html_document_path(&file_path) {
         return Err("只能预览 HTML 文件".to_string());
     }
 

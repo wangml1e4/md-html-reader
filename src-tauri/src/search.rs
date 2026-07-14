@@ -5,6 +5,7 @@ use std::path::Path;
 use tauri::command;
 use walkdir::WalkDir;
 
+use crate::fs_handler::read_document_content;
 use crate::path_guard::{
     document_file_in_workspace, ensure_within_workspace, is_ignored_name,
     is_supported_document_path, output_file_in_workspace, workspace_root,
@@ -99,13 +100,13 @@ pub fn search_content(
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
 
-        // 只搜索 .md 和 .html 文件
+        // 只搜索受支持的 Markdown 和 HTML 文件
         if !entry.file_type().is_file() || !is_supported_document_path(path) {
             continue;
         }
 
         // 读取文件内容
-        let content = match fs::read_to_string(path) {
+        let content = match read_document_content(path) {
             Ok(c) => c,
             Err(_) => continue,
         };

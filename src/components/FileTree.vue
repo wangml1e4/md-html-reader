@@ -109,8 +109,9 @@ function isSelected(path: string) {
 
 function getIcon(ext?: string) {
   if (!ext) return '📄'
-  if (ext === '.md') return '📝'
-  if (ext === '.html') return '🌐'
+  const normalizedExtension = ext.toLowerCase()
+  if (normalizedExtension === '.md') return '📝'
+  if (['.html', '.htm', '.xhtml'].includes(normalizedExtension)) return '🌐'
   return '📄'
 }
 
@@ -138,8 +139,9 @@ function filterFiles(files: FileItem[]): FileItem[] {
 
 function matchesFilter(file: FileItem) {
   if (props.filter === 'all') return true
-  if (props.filter === 'markdown') return file.extension === '.md'
-  return file.extension === '.html'
+  const extension = file.extension?.toLowerCase()
+  if (props.filter === 'markdown') return extension === '.md'
+  return ['.html', '.htm', '.xhtml'].includes(extension || '')
 }
 
 function locateCurrentFile() {

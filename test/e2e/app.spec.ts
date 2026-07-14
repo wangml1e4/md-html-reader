@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const workspacePath = '/tmp/markdown-html-e2e-workspace'
 const notePath = join(workspacePath, 'note.md')
 const secondNotePath = join(workspacePath, 'second.md')
 const previewPath = join(workspacePath, 'preview.html')
+const previewAssetsPath = join(workspacePath, 'assets')
 const exportPath = join(workspacePath, 'note.html')
 
 function buttonWithText(text: string) {
@@ -74,6 +75,15 @@ async function openE2EWorkspaceAndNote() {
   await waitForBodyText('Original keyword')
 }
 
+async function waitForPreviewWindow(mainWindow: string) {
+  await browser.waitUntil(async () => {
+    const windowHandles = await browser.getWindowHandles()
+    return windowHandles.some(handle => handle !== mainWindow)
+  }, { timeoutMsg: 'Expected the complete HTML preview window to open' })
+
+  return (await browser.getWindowHandles()).find(handle => handle !== mainWindow)!
+}
+
 describe('MD+HTML Reader Tauri window', () => {
   beforeEach(() => {
     rmSync(workspacePath, { recursive: true, force: true })
@@ -85,12 +95,17 @@ describe('MD+HTML Reader Tauri window', () => {
     writeFileSync(secondNotePath, '# Second Note\n\nSecond file content.\n')
     writeFileSync(
       previewPath,
-      '<!doctype html><html><head><link rel="stylesheet" href="./preview.css"></head><body><main id="preview-status">Waiting</main><script type="module" src="./preview.js"></script></body></html>'
+      '<!doctype html><html><head><base href="./assets/"><title>Full Preview</title><link rel="stylesheet" href="preview.css"></head><body><main id="preview-status">Waiting</main><img id="preview-image" src="preview.svg" alt="preview asset"><script type="module" src="preview.js"></script></body></html>'
     )
-    writeFileSync(join(workspacePath, 'preview.css'), '#preview-status { color: rgb(12, 34, 56); }')
+    mkdirSync(previewAssetsPath, { recursive: true })
+    writeFileSync(join(previewAssetsPath, 'preview.css'), '#preview-status { color: rgb(12, 34, 56); }')
     writeFileSync(
-      join(workspacePath, 'preview.js'),
-      "const status = document.querySelector('#preview-status'); status.textContent = 'Rendered inside app'; parent.postMessage({ source: 'markdown-html-e2e-preview', text: status.textContent, color: getComputedStyle(status).color }, '*')"
+      join(previewAssetsPath, 'preview.js'),
+      "const status = document.querySelector('#preview-status'); status.textContent = 'Rendered inside app'; document.documentElement.dataset.moduleReady = 'true'"
+    )
+    writeFileSync(
+      join(previewAssetsPath, 'preview.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#0c2238"/></svg>'
     )
   })
 
@@ -152,29 +167,61 @@ describe('MD+HTML Reader Tauri window', () => {
     expect(readFileSync(exportPath, 'utf8')).toContain('Edited keyword')
   })
 
-  it('renders local HTML with scripts and relative assets inside the app', async () => {
+  it('uses runtime asset scope to render local CSS, module scripts, images, and author base in an isolated preview window', async () => {
     await buttonWithText('打开文件夹').click()
     await waitForBodyText('preview.html')
-    await browser.execute(() => {
-      ;(window as any).__htmlPreviewMessage = null
-      window.addEventListener('message', (event) => {
-        if (event.data?.source === 'markdown-html-e2e-preview') {
-          ;(window as any).__htmlPreviewMessage = event.data
+    const previewFileButton = buttonContaining('preview.html')
+    const previewFilePath = await previewFileButton.getAttribute('data-file-path')
+    if (!previewFilePath) throw new Error('Expected the preview file path in the file tree')
+    const dynamicAssetStatus = await browser.execute(async (assetPath) => {
+      const assetUrl = (window as any).__TAURI_INTERNALS__.convertFileSrc(assetPath)
+      return (await fetch(assetUrl)).status
+    }, join(dirname(previewFilePath), 'assets', 'preview.js'))
+    expect(dynamicAssetStatus).toBe(200)
+
+    await previewFileButton.click()
+    const mainWindow = await browser.getWindowHandle()
+    await buttonWithText('打开完整预览').click()
+    const previewWindow = await waitForPreviewWindow(mainWindow)
+
+    try {
+      await browser.switchToWindow(previewWindow)
+
+      await expect($('#preview-status')).toHaveText('Rendered inside app')
+      const previewState = await browser.execute(() => {
+        const status = document.querySelector<HTMLElement>('#preview-status')
+        const image = document.querySelector<HTMLImageElement>('#preview-image')
+        return {
+          baseUri: document.baseURI,
+          color: status ? getComputedStyle(status).color : '',
+          imageLoaded: (image?.naturalWidth || 0) > 0,
+          moduleReady: document.documentElement.dataset.moduleReady,
         }
       })
-    })
-    await buttonContaining('preview.html').click()
+      expect(previewState).toEqual({
+        baseUri: expect.stringContaining('/assets/'),
+        color: 'rgb(12, 34, 56)',
+        imageLoaded: true,
+        moduleReady: 'true',
+      })
 
-    await expect($('iframe[title="HTML 预览"]')).toExist()
-    await browser.waitUntil(async () => {
-      return Boolean(await browser.execute(() => (window as any).__htmlPreviewMessage))
-    })
-    const message = await browser.execute(() => (window as any).__htmlPreviewMessage)
-    expect(message).toEqual({
-      source: 'markdown-html-e2e-preview',
-      text: 'Rendered inside app',
-      color: 'rgb(12, 34, 56)',
-    })
+      const ipcAccess = await browser.execute(async (rootPath) => {
+        const invoke = (window as any).__TAURI__?.core?.invoke
+        if (!invoke) return { bridgeExposed: false, commandAllowed: false }
+
+        try {
+          await invoke('list_files', { path: rootPath })
+          return { bridgeExposed: true, commandAllowed: true }
+        } catch {
+          return { bridgeExposed: true, commandAllowed: false }
+        }
+      }, workspacePath)
+      expect(ipcAccess.commandAllowed).toBe(false)
+    } finally {
+      await browser.switchToWindow(previewWindow)
+      await browser.closeWindow()
+      await browser.switchToWindow(mainWindow)
+    }
   })
 
   it('protects unsaved content during file and workspace switches', async () => {

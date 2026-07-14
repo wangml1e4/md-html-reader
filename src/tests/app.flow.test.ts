@@ -102,13 +102,10 @@ vi.mock('../components/MilkdownEditor.vue', () => ({
 
 vi.mock('../components/HtmlRenderer.vue', () => ({
   default: {
-    props: ['file', 'openHtmlPreview'],
+    props: ['file'],
     template: `
       <div data-testid="html-renderer">
         <div data-testid="rendered-html" v-html="file.content" />
-        <button data-testid="preview-html" @click="openHtmlPreview()">
-          浏览器预览
-        </button>
       </div>
     `,
   },
@@ -800,7 +797,7 @@ describe('App core user flow', () => {
     expect(wrapper.text()).toContain('中文翻译副本已存在，未覆盖原有文件')
   })
 
-  it('HTML 文件可调用默认浏览器预览命令', async () => {
+  it('HTML 文件使用独立预览组件并禁用全文翻译', async () => {
     vi.mocked(open).mockResolvedValue('/tmp/workspace')
     vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
       if (command === 'list_files') {
@@ -826,14 +823,6 @@ describe('App core user flow', () => {
         return []
       }
 
-      if (command === 'open_html_in_default_browser') {
-        expect(args).toEqual({
-          workspacePath: '/tmp/workspace',
-          filePath: '/tmp/workspace/page.html',
-        })
-        return undefined
-      }
-
       throw new Error(`Unexpected command: ${command}`)
     })
 
@@ -856,12 +845,5 @@ describe('App core user flow', () => {
         .attributes('disabled')
     ).toBeDefined()
 
-    await wrapper.get('[data-testid="preview-html"]').trigger('click')
-    await flushPromises()
-
-    expect(invoke).toHaveBeenCalledWith('open_html_in_default_browser', {
-      workspacePath: '/tmp/workspace',
-      filePath: '/tmp/workspace/page.html',
-    })
   })
 })

@@ -147,7 +147,6 @@
             v-if="currentIsHtml"
             :key="workspace.currentFile.path"
             :file="workspace.currentFile"
-            :open-html-preview="openHtmlPreview"
           />
 
           <MilkdownEditor
@@ -279,10 +278,11 @@ const isE2E = import.meta.env.MODE === 'e2e'
 const e2eWorkspacePath = '/tmp/markdown-html-e2e-workspace'
 const e2eExportPath = `${e2eWorkspacePath}/note.html`
 const currentIsMarkdown = computed(() => {
-  return workspace.currentFile?.path.endsWith('.md') || false
+  return workspace.currentFile?.path.toLowerCase().endsWith('.md') || false
 })
 const currentIsHtml = computed(() => {
-  return workspace.currentFile?.path.endsWith('.html') || false
+  const path = workspace.currentFile?.path.toLowerCase() || ''
+  return path.endsWith('.html') || path.endsWith('.htm') || path.endsWith('.xhtml')
 })
 
 async function openFolder() {
@@ -426,15 +426,6 @@ async function translateMarkdownFile() {
   } finally {
     isMarkdownTranslating.value = false
   }
-}
-
-async function openHtmlPreview() {
-  if (!workspace.folderPath || !workspace.currentFile) return
-
-  await invoke('open_html_in_default_browser', {
-    workspacePath: workspace.folderPath,
-    filePath: workspace.currentFile.path,
-  })
 }
 
 async function handleCreateComment(anchor: any, content: string) {

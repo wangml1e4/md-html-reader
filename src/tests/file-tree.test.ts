@@ -23,6 +23,13 @@ const files: FileItem[] = [
         extension: '.html',
         title: 'HTML Title',
       },
+      {
+        name: 'legacy.xhtml',
+        path: '/tmp/workspace/docs/legacy.xhtml',
+        type: 'file',
+        extension: '.xhtml',
+        title: 'XHTML Title',
+      },
     ],
   },
 ]
@@ -47,6 +54,7 @@ describe('FileTree', () => {
     await wrapper.setProps({ filter: 'html' })
     expect(wrapper.text()).not.toContain('note.md')
     expect(wrapper.text()).toContain('page.html')
+    expect(wrapper.text()).toContain('legacy.xhtml')
   })
 
   it('显示标题时使用标题并保留文件名兜底', async () => {

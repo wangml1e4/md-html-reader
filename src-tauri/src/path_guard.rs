@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-const SUPPORTED_DOCUMENT_EXTENSIONS: [&str; 2] = ["md", "html"];
+const SUPPORTED_DOCUMENT_EXTENSIONS: [&str; 4] = ["md", "html", "htm", "xhtml"];
 
 pub fn workspace_root(workspace_path: &str) -> Result<PathBuf, String> {
     let root = fs::canonicalize(workspace_path).map_err(|e| format!("工作区路径无效: {}", e))?;
@@ -81,7 +81,22 @@ pub fn is_ignored_name(name: &str) -> bool {
 pub fn is_supported_document_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .map(|extension| SUPPORTED_DOCUMENT_EXTENSIONS.contains(&extension))
+        .map(|extension| {
+            let extension = extension.to_ascii_lowercase();
+            SUPPORTED_DOCUMENT_EXTENSIONS.contains(&extension.as_str())
+        })
+        .unwrap_or(false)
+}
+
+pub fn is_html_document_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "html" | "htm" | "xhtml"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -127,6 +142,8 @@ mod tests {
         fs::create_dir_all(&outside).unwrap();
         fs::write(workspace.join("note.md"), "# Note").unwrap();
         fs::write(workspace.join("plain.txt"), "plain").unwrap();
+        fs::write(workspace.join("page.htm"), "<h1>HTM</h1>").unwrap();
+        fs::write(workspace.join("page.xhtml"), "<h1>XHTML</h1>").unwrap();
         fs::write(outside.join("secret.md"), "secret").unwrap();
 
         let workspace = workspace.to_string_lossy().to_string();
@@ -139,5 +156,9 @@ mod tests {
             outside.join("secret.md").to_string_lossy().as_ref()
         )
         .is_err());
+        assert!(document_file_in_workspace(&workspace, &(workspace.clone() + "/page.htm")).is_ok());
+        assert!(
+            document_file_in_workspace(&workspace, &(workspace.clone() + "/page.xhtml")).is_ok()
+        );
     }
 }
