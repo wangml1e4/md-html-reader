@@ -52,6 +52,7 @@ cargo test
 - 保存状态等待真实写盘成功后再显示
 - 工具栏文件名搜索、内容搜索和基础 HTML 导出入口
 - Ollama、腾讯翻译与 OpenAI Chat Completions 兼容翻译服务
+- 基于当前 Markdown 与该文件评论的 AI 建议、候选优化稿和确认写回
 - WebdriverIO 真实 Tauri 窗口核心路径验证入口
 
 ### OpenAI 兼容翻译配置
@@ -62,6 +63,8 @@ cargo test
 - DeepSeek 示例：Base URL `https://api.deepseek.com/v1`，模型 `deepseek-chat`
 - 其他兼容供应商（如 Agnes-ai）：填入其兼容端点与模型名称即可
 - Base URL 和模型名会保存在本机；API Key 仅保留在本次运行内，不写入磁盘
+- AI 文档助手仅发送用户确认的当前 Markdown 与未解决评论；Markdown 上限为 500,000 字符，评论总输入上限为 10,000 字符
+- 默认每次写入优化稿前再次确认；永久修改权按当前工作区、文件和服务/模型隔离，可随时撤销
 
 ### 🚧 待完善
 

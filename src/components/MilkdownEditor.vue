@@ -46,7 +46,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core'
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { history } from '@milkdown/plugin-history'
@@ -237,6 +237,8 @@ async function requestDiscardChanges(action: DiscardAction) {
 defineExpose({
   requestDiscardChanges,
   saveCurrentContent,
+  getCurrentContent,
+  replaceContent,
   scrollToHeading,
 })
 
@@ -274,6 +276,30 @@ async function saveCurrentContent() {
   if (currentContent.value !== props.file.content) {
     await save()
   }
+}
+
+function getCurrentContent() {
+  return currentContent.value
+}
+
+async function replaceContent(content: string) {
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
+  if (activeSave) await activeSave
+
+  if (!editor.value) throw new Error('编辑器尚未就绪，无法应用优化稿')
+
+  editor.value.action(ctx => {
+    const document = ctx.get(parserCtx)(content)
+    if (!document) throw new Error('无法加载优化后的 Markdown')
+
+    const view = ctx.get(editorViewCtx)
+    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, document.content))
+  })
+  currentContent.value = content
+  await save()
 }
 
 // 保存文件

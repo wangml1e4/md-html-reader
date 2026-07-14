@@ -50,6 +50,22 @@
           {{ isMarkdownTranslating ? '翻译中...' : '一键翻译为中文副本' }}
         </button>
         <button
+          @click="runDocumentAssistant('suggestions')"
+          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+          :disabled="!currentIsMarkdown || !comments.list.length || isAssistantRunning || !assistantServiceReady"
+          :title="assistantDisabledReason"
+        >
+          {{ isAssistantRunning && assistantMode === 'suggestions' ? '分析中...' : '根据评论提出建议' }}
+        </button>
+        <button
+          @click="runDocumentAssistant('optimize')"
+          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+          :disabled="!currentIsMarkdown || isAssistantRunning || !assistantServiceReady"
+          :title="assistantDisabledReason"
+        >
+          {{ isAssistantRunning && assistantMode === 'optimize' ? '优化中...' : '优化当前文档' }}
+        </button>
+        <button
           @click="openFolder"
           class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
           :disabled="isMarkdownTranslating"
@@ -65,6 +81,14 @@
       :class="markdownTranslationError ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-700 border-green-100'"
     >
       {{ markdownTranslationError || markdownTranslationMessage }}
+    </div>
+
+    <div
+      v-if="assistantMessage || assistantError"
+      class="px-4 py-2 text-sm border-b"
+      :class="assistantError ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-700 border-green-100'"
+    >
+      {{ assistantError || assistantMessage }}
     </div>
 
     <section
@@ -115,6 +139,10 @@
         </p>
         <p v-if="translationService === 'openai-compatible' && !openAiConfigComplete" class="text-xs text-red-600">
           请填写 Base URL、模型和 API Key 后再翻译。
+        </p>
+        <p v-if="permanentAssistantWritePermission" class="text-xs text-amber-700">
+          已授予永久修改权（{{ assistantWritePermissionScopeLabel }}）：每次模型读取仍会询问，但应用优化稿时不会再弹出二次写入确认。
+          <button class="underline" @click="setPermanentAssistantWritePermission(false)">撤销授权</button>
         </p>
       </div>
     </section>
@@ -260,6 +288,19 @@
       :error="translationError"
       @close="translationState = 'idle'"
     />
+
+    <DocumentAssistantPanel
+      v-if="assistantResult"
+      :mode="assistantResult.mode"
+      :original="assistantResult.sourceContent"
+      :content="assistantResult.content"
+      :applying="isAssistantApplying"
+      :permanent-write-permission="permanentAssistantWritePermission"
+      :permission-scope="describeAssistantWritePermissionScope(assistantResult.permissionScope)"
+      @close="assistantResult = null"
+      @apply="applyAssistantOptimization"
+      @update:permanent-write-permission="setPermanentAssistantWritePermission"
+    />
   </div>
 </template>
 
@@ -267,7 +308,7 @@
 import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { ask, open, save } from '@tauri-apps/plugin-dialog'
 import { useWorkspaceStore } from './stores/workspace'
 import { useCommentsStore } from './stores/comments'
 import FileTree from './components/FileTree.vue'
@@ -285,12 +326,16 @@ const SearchPanel = defineAsyncComponent(() =>
 const TranslationCard = defineAsyncComponent(() =>
   import('./components/TranslationCard.vue').then(module => module.default)
 )
+const DocumentAssistantPanel = defineAsyncComponent(() =>
+  import('./components/DocumentAssistantPanel.vue').then(module => module.default)
+)
 
 type SearchMode = 'files' | 'content'
 type FileFilter = 'all' | 'markdown' | 'html'
 type DisplayMode = 'filename' | 'title'
 type TranslationService = 'ollama' | 'tencent' | 'openai-compatible'
 type TranslationState = 'idle' | 'loading' | 'success' | 'error'
+type DocumentAssistantMode = 'suggestions' | 'optimize'
 interface OutlineHeading {
   level: number
   text: string
@@ -313,9 +358,32 @@ interface OpenAiCompatibleConfig {
   model: string
   apiKey: string
 }
+interface DocumentAssistantComment {
+  anchor: { quote: string }
+  content: string
+  status: 'open' | 'resolved'
+}
+interface DocumentAssistantResult {
+  content: string
+}
+interface AssistantWritePermissionScope {
+  workspacePath: string
+  filePath: string
+  service: TranslationService
+  model: string
+}
+interface DocumentAssistantSession {
+  mode: DocumentAssistantMode
+  sourcePath: string
+  sourceContent: string
+  content: string
+  permissionScope: AssistantWritePermissionScope
+}
 interface EditorHandle {
   requestDiscardChanges: (action: 'switch-file' | 'switch-workspace' | 'close-window') => Promise<boolean>
   saveCurrentContent: () => Promise<void>
+  getCurrentContent: () => string
+  replaceContent: (content: string) => Promise<void>
   scrollToHeading: (text: string, level: number) => void
 }
 
@@ -342,6 +410,14 @@ const exportMessage = ref<string | null>(null)
 const isMarkdownTranslating = ref(false)
 const markdownTranslationMessage = ref<string | null>(null)
 const markdownTranslationError = ref<string | null>(null)
+const assistantMode = ref<DocumentAssistantMode | null>(null)
+const isAssistantRunning = ref(false)
+const isAssistantApplying = ref(false)
+const assistantResult = ref<DocumentAssistantSession | null>(null)
+const assistantMessage = ref<string | null>(null)
+const assistantError = ref<string | null>(null)
+const assistantPermissionVersion = ref(0)
+const assistantSessionPermissions = new Set<string>()
 let unlistenCloseRequested: (() => void) | null = null
 let appUnmounted = false
 const isE2E = import.meta.env.MODE === 'e2e'
@@ -357,6 +433,50 @@ const currentIsHtml = computed(() => {
 const openAiConfigComplete = computed(() => {
   return Boolean(openAiBaseUrl.value.trim() && openAiModel.value.trim() && openAiApiKey.value.trim())
 })
+const assistantServiceReady = computed(() => {
+  return translationService.value !== 'tencent'
+    && (translationService.value !== 'openai-compatible' || openAiConfigComplete.value)
+})
+const assistantDisabledReason = computed(() => {
+  if (translationService.value === 'tencent') return 'AI 助手仅支持 Ollama 或 OpenAI 兼容服务'
+  if (translationService.value === 'openai-compatible' && !openAiConfigComplete.value) {
+    return '请先填写 OpenAI 兼容服务的 Base URL、模型和 API Key'
+  }
+  if (!currentIsMarkdown.value) return '仅支持当前打开的 Markdown 文件'
+  return ''
+})
+const assistantWritePermissionScope = computed<AssistantWritePermissionScope | null>(() => {
+  const workspacePath = workspace.folderPath
+  const filePath = workspace.currentFile?.path
+  if (!workspacePath || !filePath) return null
+
+  return {
+    workspacePath,
+    filePath,
+    service: translationService.value,
+    model: translationService.value === 'openai-compatible'
+      ? `${openAiBaseUrl.value.trim()}|${openAiModel.value.trim()}`
+      : 'ollama-default',
+  }
+})
+const permanentAssistantWritePermission = computed(() => {
+  assistantPermissionVersion.value
+  const scope = assistantWritePermissionScope.value
+  return Boolean(scope && hasPermanentAssistantWritePermission(scope))
+})
+const assistantWritePermissionScopeLabel = computed(() => {
+  return describeAssistantWritePermissionScope(assistantWritePermissionScope.value)
+})
+
+function describeAssistantWritePermissionScope(scope: AssistantWritePermissionScope | null) {
+  if (!scope) return '当前文件与模型'
+  const fileName = scope.filePath.split('/').pop() || scope.filePath
+  const modelName = scope.model.split('|').slice(-1)[0] || ''
+  const serviceName = scope.service === 'openai-compatible'
+    ? `OpenAI 兼容模型 ${modelName}`
+    : 'Ollama 默认模型'
+  return `文件 ${fileName}，${serviceName}`
+}
 
 function readOpenAiSetting(name: 'baseUrl' | 'model') {
   try {
@@ -379,6 +499,36 @@ function persistOpenAiSettings() {
   } catch {
     // 浏览器存储不可用时仍保留当前运行内的配置。
   }
+}
+
+function assistantWritePermissionKey(scope: AssistantWritePermissionScope) {
+  return `md-html-reader.assistant.permanent-write-permission.${encodeURIComponent(JSON.stringify(scope))}`
+}
+
+function hasPermanentAssistantWritePermission(scope: AssistantWritePermissionScope) {
+  const key = assistantWritePermissionKey(scope)
+  if (assistantSessionPermissions.has(key)) return true
+  try {
+    return window.localStorage.getItem(key) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function setPermanentAssistantWritePermission(granted: boolean) {
+  const scope = assistantWritePermissionScope.value
+  if (!scope) return
+
+  const key = assistantWritePermissionKey(scope)
+  if (granted) assistantSessionPermissions.add(key)
+  else assistantSessionPermissions.delete(key)
+  try {
+    if (granted) window.localStorage.setItem(key, 'true')
+    else window.localStorage.removeItem(key)
+  } catch {
+    // 浏览器存储不可用时仍在当前运行内保留授权状态。
+  }
+  assistantPermissionVersion.value += 1
 }
 
 function handleTranslationServiceChange() {
@@ -577,6 +727,122 @@ async function handleTranslate(selection: Selection) {
     console.error('翻译失败:', error)
     translationError.value = error instanceof Error ? error.message : String(error)
     translationState.value = 'error'
+  }
+}
+
+function documentAssistantComments(): DocumentAssistantComment[] {
+  return comments.list
+    .filter(comment => comment.status === 'open')
+    .map(comment => ({
+    anchor: { quote: comment.anchor.quote },
+    content: comment.content,
+    status: comment.status,
+    }))
+}
+
+async function runDocumentAssistant(mode: DocumentAssistantMode) {
+  const sourceFile = workspace.currentFile
+  if (!sourceFile || !currentIsMarkdown.value || isAssistantRunning.value || !assistantServiceReady.value) return
+  const assistantComments = documentAssistantComments()
+  if (mode === 'suggestions' && !assistantComments.length) return
+  const permissionScope = assistantWritePermissionScope.value
+  if (!permissionScope) return
+
+  const actionLabel = mode === 'suggestions' ? '根据评论提出建议' : '优化当前文档'
+  const approved = await ask(
+    `将向当前模型发送“${sourceFile.path.split('/').pop() || sourceFile.path}”的完整 Markdown（${editorRef.value?.getCurrentContent().length || sourceFile.content.length} 字符）和该文件的 ${assistantComments.length} 条未解决评论，用于${actionLabel}。不会发送整个工作区，也不会自动写入文件。是否继续？`,
+    { title: 'AI 读取授权', kind: 'warning' },
+  )
+  if (!approved) return
+
+  isAssistantRunning.value = true
+  assistantMode.value = mode
+  assistantMessage.value = null
+  assistantError.value = null
+  assistantResult.value = null
+  try {
+    if (!editorRef.value) throw new Error('编辑器尚未就绪，请稍后重试')
+    await editorRef.value.saveCurrentContent()
+
+    const currentFile = workspace.currentFile
+    if (!currentFile || currentFile.path !== sourceFile.path) {
+      throw new Error('当前文件已切换，请重新发起 AI 操作')
+    }
+    const sourceContent = editorRef.value.getCurrentContent()
+    const openaiConfig = openAiConfigPayload()
+    const result = await invoke<DocumentAssistantResult>(
+      mode === 'suggestions' ? 'suggest_document_improvements' : 'optimize_document_with_comments',
+      {
+        service: translationService.value,
+        markdown: sourceContent,
+        comments: assistantComments,
+        ...(openaiConfig ? { openaiConfig } : {}),
+      },
+    )
+
+    assistantResult.value = {
+      mode,
+      sourcePath: sourceFile.path,
+      sourceContent,
+      content: result.content,
+      permissionScope,
+    }
+  } catch (error) {
+    console.error('AI 文档处理失败:', error)
+    assistantError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    isAssistantRunning.value = false
+    assistantMode.value = null
+  }
+}
+
+async function applyAssistantOptimization() {
+  const result = assistantResult.value
+  if (!result || result.mode !== 'optimize' || isAssistantApplying.value) return
+  if (!editorRef.value || workspace.currentFile?.path !== result.sourcePath) {
+    assistantError.value = '当前文件已切换，不能应用这份优化稿'
+    return
+  }
+  if (editorRef.value.getCurrentContent() !== result.sourceContent) {
+    assistantError.value = '文档在 AI 处理期间已被修改，请重新生成优化稿以避免覆盖更改'
+    return
+  }
+
+  const currentPermissionScope = assistantWritePermissionScope.value
+  if (
+    !currentPermissionScope
+    || assistantWritePermissionKey(currentPermissionScope) !== assistantWritePermissionKey(result.permissionScope)
+  ) {
+    assistantError.value = '模型服务或文件已变更，请重新生成优化稿后再应用'
+    return
+  }
+
+  if (!permanentAssistantWritePermission.value) {
+    const approved = await ask(
+      '即将把预览中的优化稿写入当前文件。该操作会覆盖当前文档内容，是否确认应用？',
+      { title: '确认写入优化稿', kind: 'warning' },
+    )
+    if (!approved) return
+  }
+
+  isAssistantApplying.value = true
+  assistantError.value = null
+  try {
+    await editorRef.value.replaceContent(result.content)
+    if (workspace.folderPath && workspace.currentFile?.path === result.sourcePath) {
+      await comments.loadComments(
+        workspace.folderPath,
+        result.sourcePath,
+        workspace.currentFile.content,
+      )
+    }
+    assistantResult.value = null
+    assistantMessage.value = '已应用优化稿并保存当前文档'
+  } catch (error) {
+    console.error('应用优化稿失败:', error)
+    assistantError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    isAssistantApplying.value = false
   }
 }
 

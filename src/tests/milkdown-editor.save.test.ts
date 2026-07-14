@@ -5,6 +5,10 @@ import { ask } from '@tauri-apps/plugin-dialog'
 
 const editorHarness = vi.hoisted(() => ({
   markdownUpdated: null as null | ((ctx: unknown, markdown: string) => void),
+  replaceArguments: null as null | [number, number, unknown],
+  dispatch: vi.fn(),
+  parserCtx: Symbol('parserCtx'),
+  editorViewCtx: Symbol('editorViewCtx'),
 }))
 
 vi.mock('@milkdown/core', () => ({
@@ -26,12 +30,32 @@ vi.mock('@milkdown/core', () => ({
       },
       create: async () => ({
         destroy: () => {},
-        action: async (callback: any) => callback({ set: () => {} }),
+        action: async (callback: any) => callback({
+          set: () => {},
+          get: (key: symbol) => {
+            if (key === editorHarness.parserCtx) return (content: string) => ({ content: { markdown: content } })
+            if (key === editorHarness.editorViewCtx) {
+              const transaction = {
+                replaceWith(from: number, to: number, content: unknown) {
+                  editorHarness.replaceArguments = [from, to, content]
+                  return this
+                },
+              }
+              return {
+                state: { doc: { content: { size: 7 } }, tr: transaction },
+                dispatch: editorHarness.dispatch,
+              }
+            }
+            return {}
+          },
+        }),
       }),
     }),
   },
   rootCtx: Symbol('rootCtx'),
   defaultValueCtx: Symbol('defaultValueCtx'),
+  parserCtx: editorHarness.parserCtx,
+  editorViewCtx: editorHarness.editorViewCtx,
 }))
 
 vi.mock('@milkdown/preset-commonmark', () => ({ commonmark: {} }))
@@ -46,6 +70,8 @@ vi.mock('@milkdown/plugin-prism', () => ({ prism: {} }))
 describe('MilkdownEditor save state', () => {
   afterEach(() => {
     editorHarness.markdownUpdated = null
+    editorHarness.replaceArguments = null
+    editorHarness.dispatch.mockReset()
     vi.restoreAllMocks()
   })
 
@@ -127,6 +153,34 @@ describe('MilkdownEditor save state', () => {
 
     wrapper.unmount()
     failingWrapper.unmount()
+  })
+
+  it('应用优化稿会替换编辑器内容并通过既有保存路径写入', async () => {
+    const file = { path: '/tmp/note.md', content: '# Old' }
+    const saveContent = vi.fn(async (content: string) => {
+      file.content = content
+    })
+    const wrapper = mount(MilkdownEditor, { props: { file, saveContent } })
+    await flushPromises()
+
+    await (wrapper.vm as any).replaceContent('# New')
+
+    expect(editorHarness.replaceArguments).toEqual([0, 7, { markdown: '# New' }])
+    expect(editorHarness.dispatch).toHaveBeenCalledOnce()
+    expect(saveContent).toHaveBeenCalledWith('# New')
+    expect((wrapper.vm as any).getCurrentContent()).toBe('# New')
+    wrapper.unmount()
+  })
+
+  it('编辑器尚未初始化时拒绝写入优化稿', async () => {
+    const saveContent = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(MilkdownEditor, {
+      props: { file: { path: '/tmp/note.md', content: '# Old' }, saveContent },
+    })
+
+    await expect((wrapper.vm as any).replaceContent('# New')).rejects.toThrow('编辑器尚未就绪')
+    expect(saveContent).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('存在未保存内容时根据操作类型确认是否放弃', async () => {

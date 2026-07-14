@@ -38,6 +38,8 @@ fn main() {
             search::export_as_html,
             translation::translate_text,
             translation::translate_markdown_to_chinese,
+            translation::suggest_document_improvements,
+            translation::optimize_document_with_comments,
             browser_preview::open_html_in_default_browser,
         ])
         .run(tauri::generate_context!())

@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import App from '../App.vue'
 import { invoke } from '@tauri-apps/api/core'
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { ask, open, save } from '@tauri-apps/plugin-dialog'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useCommentsStore } from '../stores/comments'
 
@@ -13,6 +13,7 @@ const milkdownLifecycle = vi.hoisted(() => ({
   switchRequests: 0,
   saveCurrentContentRequests: 0,
   saveCurrentContentError: null as Error | null,
+  replacementRequests: [] as string[],
   allowSwitch: true,
   actions: [] as string[],
 }))
@@ -61,7 +62,7 @@ vi.mock('../components/MilkdownEditor.vue', () => ({
     unmounted() {
       milkdownLifecycle.unmountCount++
     },
-    setup(_props: unknown, { expose }: { expose: (value: unknown) => void }) {
+    setup(props: { file: { content: string }, saveContent: (content: string) => Promise<void> }, { expose }: { expose: (value: unknown) => void }) {
       expose({
         async requestDiscardChanges(action: string) {
           milkdownLifecycle.switchRequests++
@@ -73,6 +74,13 @@ vi.mock('../components/MilkdownEditor.vue', () => ({
           if (milkdownLifecycle.saveCurrentContentError) {
             throw milkdownLifecycle.saveCurrentContentError
           }
+        },
+        getCurrentContent() {
+          return props.file.content
+        },
+        async replaceContent(content: string) {
+          milkdownLifecycle.replacementRequests.push(content)
+          await props.saveContent(content)
         },
         scrollToHeading() {},
       })
@@ -166,6 +174,25 @@ vi.mock('../components/TranslationCard.vue', () => ({
   },
 }))
 
+vi.mock('../components/DocumentAssistantPanel.vue', () => ({
+  default: {
+    props: ['mode', 'original', 'content', 'applying', 'permanentWritePermission', 'permissionScope'],
+    emits: ['close', 'apply', 'update:permanentWritePermission'],
+    template: `
+      <div data-testid="document-assistant-panel">
+        {{ mode }}|{{ original }}|{{ content }}|{{ permanentWritePermission }}|{{ permissionScope }}
+        <button data-testid="assistant-apply" @click="$emit('apply')">应用优化稿</button>
+        <input
+          data-testid="assistant-permanent-write"
+          type="checkbox"
+          :checked="permanentWritePermission"
+          @change="$emit('update:permanentWritePermission', $event.target.checked)"
+        />
+      </div>
+    `,
+  },
+}))
+
 describe('App core user flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -174,6 +201,7 @@ describe('App core user flow', () => {
     milkdownLifecycle.switchRequests = 0
     milkdownLifecycle.saveCurrentContentRequests = 0
     milkdownLifecycle.saveCurrentContentError = null
+    milkdownLifecycle.replacementRequests = []
     milkdownLifecycle.allowSwitch = true
     milkdownLifecycle.actions = []
     windowLifecycle.closeHandler = null
@@ -846,6 +874,216 @@ describe('App core user flow', () => {
 
     expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('# Hello')
     expect(wrapper.text()).toContain('中文翻译副本已存在，未覆盖原有文件')
+  })
+
+  it('经读取确认后只把当前 Markdown 和当前文件评论发送给模型以生成建议', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(ask).mockResolvedValue(true)
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Current document'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') {
+        return [
+          {
+            id: 'comment-1', fileHash: 'hash-note', anchor: { quote: 'Current document', offset: 2, length: 16 },
+            content: '补充一个具体例子', status: 'open', createdAt: 1, updatedAt: 1,
+          },
+          {
+            id: 'comment-2', fileHash: 'hash-note', anchor: { quote: 'Resolved comment', offset: 0, length: 8 },
+            content: '已解决的评论不应发送', status: 'resolved', createdAt: 1, updatedAt: 1,
+          },
+        ]
+      }
+      if (command === 'suggest_document_improvements') {
+        expect(args).toEqual({
+          service: 'ollama',
+          markdown: '# Current document',
+          comments: [{
+            anchor: { quote: 'Current document' },
+            content: '补充一个具体例子',
+            status: 'open',
+          }],
+        })
+        expect(args).not.toHaveProperty('workspacePath')
+        return { content: '- 在开头补充一个具体例子。' }
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === '根据评论提出建议')!.trigger('click')
+    await flushPromises()
+
+    expect(ask).toHaveBeenCalledWith(
+      expect.stringContaining('1 条未解决评论'),
+      { title: 'AI 读取授权', kind: 'warning' },
+    )
+    expect(wrapper.get('[data-testid="document-assistant-panel"]').text()).toContain('补充一个具体例子')
+  })
+
+  it('优化稿必须经二次写入确认，取消时保留原文', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(ask).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Original'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') return []
+      if (command === 'optimize_document_with_comments') return { content: '# Optimized' }
+      if (command === 'write_file') throw new Error('write should not be called')
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === '优化当前文档')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="assistant-apply"]').trigger('click')
+    await flushPromises()
+
+    expect(ask).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('写入当前文件'),
+      { title: '确认写入优化稿', kind: 'warning' },
+    )
+    expect(milkdownLifecycle.replacementRequests).toEqual([])
+  })
+
+  it('永久修改权只跳过二次确认，仍要求每次读取确认', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(ask).mockResolvedValue(true)
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Original'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') return []
+      if (command === 'optimize_document_with_comments') return { content: '# Optimized' }
+      if (command === 'write_file') {
+        expect(args).toEqual({
+          workspacePath: '/tmp/workspace',
+          path: '/tmp/workspace/note.md',
+          content: '# Optimized',
+        })
+        return undefined
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === '优化当前文档')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="assistant-permanent-write"]').setValue(true)
+    await wrapper.get('[data-testid="assistant-apply"]').trigger('click')
+    await flushPromises()
+
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(milkdownLifecycle.replacementRequests).toEqual(['# Optimized'])
+    const permissionKey = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))
+      .find(key => key?.startsWith('md-html-reader.assistant.permanent-write-permission.'))
+    expect(permissionKey).toBeDefined()
+    expect(JSON.parse(decodeURIComponent(permissionKey!.split('.permanent-write-permission.')[1]))).toEqual({
+      workspacePath: '/tmp/workspace',
+      filePath: '/tmp/workspace/note.md',
+      service: 'ollama',
+      model: 'ollama-default',
+    })
+  })
+
+  it('永久修改权不会跨文件沿用', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(ask).mockResolvedValue(true)
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return [
+          { name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' },
+          { name: 'other.md', path: '/tmp/workspace/other.md', type: 'file', extension: '.md' },
+        ]
+      }
+      if (command === 'read_file') return args.path.endsWith('other.md') ? '# Other' : '# Original'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') return []
+      if (command === 'optimize_document_with_comments') {
+        return { content: args.markdown === '# Other' ? '# Other optimized' : '# Original optimized' }
+      }
+      if (command === 'write_file') return undefined
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+
+    const fileButtons = wrapper.findAll('[data-testid="file-item"]')
+    await fileButtons[0].trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '优化当前文档')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="assistant-permanent-write"]').setValue(true)
+    await wrapper.get('[data-testid="assistant-apply"]').trigger('click')
+    await flushPromises()
+
+    await fileButtons[1].trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '优化当前文档')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="document-assistant-panel"]').text()).toContain('false')
+    await wrapper.get('[data-testid="assistant-apply"]').trigger('click')
+    await flushPromises()
+
+    expect(ask).toHaveBeenCalledTimes(3)
+  })
+
+  it('AI 输入超限时显示后端返回的具体原因', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(ask).mockResolvedValue(true)
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Current document'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') {
+        return [{
+          id: 'comment-1', fileHash: 'hash-note', anchor: { quote: 'Current document', offset: 2, length: 16 },
+          content: '需要处理', status: 'open', createdAt: 1, updatedAt: 1,
+        }]
+      }
+      if (command === 'suggest_document_improvements') {
+        throw new Error('当前文件的未解决评论总长度不能超过 10000 字符')
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '根据评论提出建议')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前文件的未解决评论总长度不能超过 10000 字符')
   })
 
   it('HTML 文件使用独立预览组件并禁用全文翻译', async () => {
