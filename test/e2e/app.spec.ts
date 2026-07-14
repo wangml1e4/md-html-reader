@@ -95,7 +95,7 @@ describe('MD+HTML Reader Tauri window', () => {
     writeFileSync(secondNotePath, '# Second Note\n\nSecond file content.\n')
     writeFileSync(
       previewPath,
-      '<!doctype html><html><head><base href="./assets/"><title>Full Preview</title><link rel="stylesheet" href="preview.css"></head><body><main id="preview-status">Waiting</main><img id="preview-image" src="preview.svg" alt="preview asset"><script type="module" src="preview.js"></script></body></html>'
+      '<!doctype html><html><head><base href="./assets/"><link rel="stylesheet" href="preview.css"></head><body><main id="preview-status">Waiting</main><img id="preview-image" src="preview.svg" alt="preview asset"><script type="module" src="preview.js"></script></body></html>'
     )
     mkdirSync(previewAssetsPath, { recursive: true })
     writeFileSync(join(previewAssetsPath, 'preview.css'), '#preview-status { color: rgb(12, 34, 56); }')
@@ -220,6 +220,9 @@ describe('MD+HTML Reader Tauri window', () => {
     } finally {
       await browser.switchToWindow(previewWindow)
       await browser.closeWindow()
+      await browser.waitUntil(async () => (await browser.getWindowHandles()).includes(mainWindow), {
+        timeoutMsg: 'Expected the main window to remain after closing the preview window',
+      })
       await browser.switchToWindow(mainWindow)
     }
   })

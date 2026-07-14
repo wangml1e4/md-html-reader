@@ -27,16 +27,25 @@
         </button>
         <select
           v-model="translationService"
+          @change="handleTranslationServiceChange"
           class="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded"
           aria-label="翻译服务"
         >
           <option value="ollama">Ollama</option>
           <option value="tencent">腾讯翻译</option>
+          <option value="openai-compatible">OpenAI 兼容</option>
         </select>
+        <button
+          @click="openAiConfigOpen = !openAiConfigOpen"
+          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+          aria-label="配置 OpenAI 兼容模型"
+        >
+          模型配置
+        </button>
         <button
           @click="translateMarkdownFile"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-          :disabled="!currentIsMarkdown || isMarkdownTranslating"
+          :disabled="!currentIsMarkdown || isMarkdownTranslating || (translationService === 'openai-compatible' && !openAiConfigComplete)"
         >
           {{ isMarkdownTranslating ? '翻译中...' : '一键翻译为中文副本' }}
         </button>
@@ -57,6 +66,58 @@
     >
       {{ markdownTranslationError || markdownTranslationMessage }}
     </div>
+
+    <section
+      v-if="openAiConfigOpen"
+      aria-label="OpenAI 兼容模型配置"
+      class="px-4 py-3 bg-white border-b border-gray-200"
+    >
+      <div class="max-w-4xl space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-medium text-gray-800">OpenAI 兼容模型配置</div>
+          <button class="text-xs text-gray-500 hover:text-gray-700" @click="openAiConfigOpen = false">关闭</button>
+        </div>
+        <div class="grid gap-2 md:grid-cols-3">
+          <label class="text-xs text-gray-600">
+            Base URL
+            <input
+              v-model.trim="openAiBaseUrl"
+              @change="persistOpenAiSettings"
+              class="mt-1 w-full px-2 py-1 text-sm border border-gray-300 rounded"
+              placeholder="https://api.deepseek.com/v1"
+              autocomplete="url"
+            />
+          </label>
+          <label class="text-xs text-gray-600">
+            模型
+            <input
+              v-model.trim="openAiModel"
+              @change="persistOpenAiSettings"
+              class="mt-1 w-full px-2 py-1 text-sm border border-gray-300 rounded"
+              placeholder="deepseek-chat"
+              autocomplete="off"
+            />
+          </label>
+          <label class="text-xs text-gray-600">
+            API Key
+            <input
+              v-model="openAiApiKey"
+              class="mt-1 w-full px-2 py-1 text-sm border border-gray-300 rounded"
+              type="password"
+              placeholder="sk-..."
+              autocomplete="off"
+            />
+          </label>
+        </div>
+        <p class="text-xs text-gray-500">
+          使用 OpenAI Chat Completions 兼容协议。DeepSeek 示例：Base URL 为 https://api.deepseek.com/v1，模型为 deepseek-chat。
+          API Key 只保存在本次运行内，不写入磁盘。
+        </p>
+        <p v-if="translationService === 'openai-compatible' && !openAiConfigComplete" class="text-xs text-red-600">
+          请填写 Base URL、模型和 API Key 后再翻译。
+        </p>
+      </div>
+    </section>
 
     <!-- 主工作区 -->
     <main class="flex-1 flex overflow-hidden">
@@ -228,7 +289,7 @@ const TranslationCard = defineAsyncComponent(() =>
 type SearchMode = 'files' | 'content'
 type FileFilter = 'all' | 'markdown' | 'html'
 type DisplayMode = 'filename' | 'title'
-type TranslationService = 'ollama' | 'tencent'
+type TranslationService = 'ollama' | 'tencent' | 'openai-compatible'
 type TranslationState = 'idle' | 'loading' | 'success' | 'error'
 interface OutlineHeading {
   level: number
@@ -247,6 +308,11 @@ interface MarkdownTranslationResult {
   translatedCharacters: number
   translatedSegments: number
 }
+interface OpenAiCompatibleConfig {
+  baseUrl: string
+  model: string
+  apiKey: string
+}
 interface EditorHandle {
   requestDiscardChanges: (action: 'switch-file' | 'switch-workspace' | 'close-window') => Promise<boolean>
   saveCurrentContent: () => Promise<void>
@@ -263,6 +329,10 @@ const locateToken = ref(0)
 const outlineOpen = ref(false)
 const editorRef = ref<EditorHandle | null>(null)
 const translationService = ref<TranslationService>('ollama')
+const openAiConfigOpen = ref(false)
+const openAiBaseUrl = ref(readOpenAiSetting('baseUrl'))
+const openAiModel = ref(readOpenAiSetting('model'))
+const openAiApiKey = ref('')
 const translationState = ref<TranslationState>('idle')
 const translationOriginal = ref('')
 const translationTranslated = ref('')
@@ -284,6 +354,46 @@ const currentIsHtml = computed(() => {
   const path = workspace.currentFile?.path.toLowerCase() || ''
   return path.endsWith('.html') || path.endsWith('.htm') || path.endsWith('.xhtml')
 })
+const openAiConfigComplete = computed(() => {
+  return Boolean(openAiBaseUrl.value.trim() && openAiModel.value.trim() && openAiApiKey.value.trim())
+})
+
+function readOpenAiSetting(name: 'baseUrl' | 'model') {
+  try {
+    return window.localStorage.getItem(`md-html-reader.openai-compatible.${name}`) || ''
+  } catch {
+    return ''
+  }
+}
+
+function persistOpenAiSettings() {
+  try {
+    for (const [name, value] of [
+      ['baseUrl', openAiBaseUrl.value],
+      ['model', openAiModel.value],
+    ] as const) {
+      const key = `md-html-reader.openai-compatible.${name}`
+      if (value.trim()) window.localStorage.setItem(key, value.trim())
+      else window.localStorage.removeItem(key)
+    }
+  } catch {
+    // 浏览器存储不可用时仍保留当前运行内的配置。
+  }
+}
+
+function handleTranslationServiceChange() {
+  if (translationService.value === 'openai-compatible') openAiConfigOpen.value = true
+}
+
+function openAiConfigPayload(): OpenAiCompatibleConfig | undefined {
+  if (translationService.value !== 'openai-compatible') return undefined
+  persistOpenAiSettings()
+  return {
+    baseUrl: openAiBaseUrl.value,
+    model: openAiModel.value,
+    apiKey: openAiApiKey.value,
+  }
+}
 
 async function openFolder() {
   if (isMarkdownTranslating.value) return
@@ -399,10 +509,12 @@ async function translateMarkdownFile() {
       throw new Error('编辑器尚未就绪，请稍后重试')
     }
     await editorRef.value.saveCurrentContent()
+    const openaiConfig = openAiConfigPayload()
     const result = await invoke<MarkdownTranslationResult>('translate_markdown_to_chinese', {
       service,
       workspacePath,
       filePath: sourceFile.path,
+      ...(openaiConfig ? { openaiConfig } : {}),
     })
 
     if (!(await workspace.loadFolder(workspacePath))) {
@@ -452,9 +564,11 @@ async function handleTranslate(selection: Selection) {
   translationState.value = 'loading'
 
   try {
+    const openaiConfig = openAiConfigPayload()
     const result = await invoke<TranslationResult>('translate_text', {
       service: translationService.value,
       text: selection.text,
+      ...(openaiConfig ? { openaiConfig } : {}),
     })
     translationOriginal.value = result.original
     translationTranslated.value = result.translated

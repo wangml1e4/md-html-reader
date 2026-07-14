@@ -48,4 +48,18 @@ describe('TranslationCard', () => {
 
     expect(wrapper.text()).toContain('腾讯翻译未配置密钥')
   })
+
+  it('标识 OpenAI 兼容翻译服务', () => {
+    const wrapper = mount(TranslationCard, {
+      props: {
+        state: 'success',
+        original: 'Hello',
+        translated: '你好',
+        service: 'openai-compatible',
+        error: null,
+      },
+    })
+
+    expect(wrapper.text()).toContain('OpenAI 兼容')
+  })
 })

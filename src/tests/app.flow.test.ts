@@ -178,6 +178,7 @@ describe('App core user flow', () => {
     milkdownLifecycle.actions = []
     windowLifecycle.closeHandler = null
     windowLifecycle.unlisten.mockReset()
+    window.localStorage.clear()
   })
 
   it('覆盖打开文件夹、打开文件、保存、评论、重开、搜索和导出 HTML', async () => {
@@ -630,6 +631,56 @@ describe('App core user flow', () => {
 
     expect(wrapper.get('[data-testid="translation-card"]').text()).toContain('你好')
     expect(wrapper.get('[data-testid="translation-card"]').text()).toContain('ollama')
+  })
+
+  it('将 OpenAI 兼容配置传给翻译命令且不持久化 API Key', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Note'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') return []
+      if (command === 'translate_text') {
+        expect(args).toEqual({
+          service: 'openai-compatible',
+          text: 'Hello',
+          openaiConfig: {
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-chat',
+            apiKey: 'test-api-key',
+          },
+        })
+        return {
+          original: 'Hello',
+          translated: '你好',
+          sourceLang: 'en',
+          targetLang: 'zh',
+          service: 'openai-compatible',
+        }
+      }
+
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="翻译服务"]').setValue('openai-compatible')
+    await wrapper.get('input[placeholder="https://api.deepseek.com/v1"]').setValue('https://api.deepseek.com/v1')
+    await wrapper.get('input[placeholder="deepseek-chat"]').setValue('deepseek-chat')
+    await wrapper.get('input[placeholder="sk-..."]').setValue('test-api-key')
+    await wrapper.get('[data-testid="translate-selection"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="translation-card"]').text()).toContain('openai-compatible')
+    expect(window.localStorage.getItem('md-html-reader.openai-compatible.baseUrl')).toBe('https://api.deepseek.com/v1')
+    expect(window.localStorage.getItem('md-html-reader.openai-compatible.model')).toBe('deepseek-chat')
+    expect(window.localStorage.getItem('md-html-reader.openai-compatible.apiKey')).toBeNull()
   })
 
   it('保存当前 Markdown 后生成并打开中文翻译副本', async () => {

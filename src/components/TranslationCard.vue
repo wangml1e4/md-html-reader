@@ -44,7 +44,7 @@
 import { computed } from 'vue'
 
 type TranslationState = 'idle' | 'loading' | 'success' | 'error'
-type TranslationService = 'ollama' | 'tencent'
+type TranslationService = 'ollama' | 'tencent' | 'openai-compatible'
 
 const props = defineProps<{
   state: TranslationState
@@ -59,7 +59,9 @@ const emit = defineEmits<{
 }>()
 
 const serviceLabel = computed(() => {
-  return props.service === 'ollama' ? 'Ollama' : '腾讯翻译'
+  if (props.service === 'ollama') return 'Ollama'
+  if (props.service === 'tencent') return '腾讯翻译'
+  return 'OpenAI 兼容'
 })
 
 async function copyTranslated() {

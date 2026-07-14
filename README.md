@@ -51,7 +51,17 @@ cargo test
 - 评论 sidecar 文件名由稳定文档路径派生，内容 hash 作为版本信息
 - 保存状态等待真实写盘成功后再显示
 - 工具栏文件名搜索、内容搜索和基础 HTML 导出入口
+- Ollama、腾讯翻译与 OpenAI Chat Completions 兼容翻译服务
 - WebdriverIO 真实 Tauri 窗口核心路径验证入口
+
+### OpenAI 兼容翻译配置
+
+工具栏选择「OpenAI 兼容」后点击「模型配置」，填写 Base URL、模型和 API Key。应用会向
+`/v1/chat/completions` 发送标准 Bearer Token 请求；若 Base URL 已包含该完整路径，则会直接使用。
+
+- DeepSeek 示例：Base URL `https://api.deepseek.com/v1`，模型 `deepseek-chat`
+- 其他兼容供应商（如 Agnes-ai）：填入其兼容端点与模型名称即可
+- Base URL 和模型名会保存在本机；API Key 仅保留在本次运行内，不写入磁盘
 
 ### 🚧 待完善
 

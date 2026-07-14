@@ -7,7 +7,7 @@ use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::command;
 use time::{macros::format_description, OffsetDateTime};
 
@@ -47,6 +47,29 @@ struct OllamaResponse {
     response: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenAiCompatibleConfig {
+    base_url: String,
+    model: String,
+    api_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleResponse {
+    choices: Vec<OpenAiCompatibleChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleChoice {
+    message: OpenAiCompatibleMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleMessage {
+    content: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct TencentResponseEnvelope {
@@ -67,13 +90,23 @@ struct TencentError {
 }
 
 #[command]
-pub fn translate_text(service: String, text: String) -> Result<TranslationResult, String> {
+pub fn translate_text(
+    service: String,
+    text: String,
+    openai_config: Option<OpenAiCompatibleConfig>,
+) -> Result<TranslationResult, String> {
     let text = validate_translate_request(&service, &text)?.to_string();
     let (source_lang, target_lang) = detect_translation_direction(&text);
 
     match service.as_str() {
         "ollama" => translate_with_ollama(&text, &source_lang, &target_lang),
         "tencent" => translate_with_tencent(&text, &source_lang, &target_lang),
+        "openai-compatible" => translate_with_openai_compatible(
+            &text,
+            &source_lang,
+            &target_lang,
+            openai_config.as_ref(),
+        ),
         _ => Err("未知翻译服务".to_string()),
     }
 }
@@ -83,19 +116,28 @@ pub fn translate_markdown_to_chinese(
     service: String,
     workspace_path: String,
     file_path: String,
+    openai_config: Option<OpenAiCompatibleConfig>,
 ) -> Result<MarkdownTranslationResult, String> {
     validate_translation_service(&service)?;
+    if service == "openai-compatible" {
+        validate_openai_compatible_config(openai_config.as_ref())?;
+    }
     translate_markdown_file_with(&workspace_path, &file_path, |text| {
-        translate_fragment_to_chinese(&service, text)
+        translate_fragment_to_chinese(&service, text, openai_config.as_ref())
     })
 }
 
-fn translate_fragment_to_chinese(service: &str, text: &str) -> Result<String, String> {
+fn translate_fragment_to_chinese(
+    service: &str,
+    text: &str,
+    openai_config: Option<&OpenAiCompatibleConfig>,
+) -> Result<String, String> {
     let text = validate_translate_request(service, text)?;
     match service {
         "ollama" => translate_with_ollama_to_chinese(text),
         "tencent" => translate_with_tencent(text, MARKDOWN_TENCENT_SOURCE_LANGUAGE, "zh")
             .map(|result| result.translated),
+        "openai-compatible" => translate_with_openai_compatible_to_chinese(text, openai_config),
         _ => Err("未知翻译服务".to_string()),
     }
 }
@@ -116,7 +158,7 @@ fn validate_translate_request<'a>(service: &str, text: &'a str) -> Result<&'a st
 }
 
 fn validate_translation_service(service: &str) -> Result<(), String> {
-    if service == "ollama" || service == "tencent" {
+    if service == "ollama" || service == "tencent" || service == "openai-compatible" {
         Ok(())
     } else {
         Err("未知翻译服务".to_string())
@@ -171,6 +213,136 @@ fn translate_with_ollama_to_chinese(text: &str) -> Result<String, String> {
         text
     );
     request_ollama_translation(&prompt, 4096)
+}
+
+fn translate_with_openai_compatible(
+    text: &str,
+    source_lang: &str,
+    target_lang: &str,
+    config: Option<&OpenAiCompatibleConfig>,
+) -> Result<TranslationResult, String> {
+    let instruction = if source_lang == "zh" {
+        "Translate the user's Chinese text to English. Return only the translation, with no explanation."
+    } else {
+        "将用户提供的英文翻译成中文。只输出翻译结果，不要解释。"
+    };
+    let translated = request_openai_compatible_translation(config, instruction, text, 512)?;
+
+    Ok(TranslationResult {
+        original: text.to_string(),
+        translated,
+        source_lang: source_lang.to_string(),
+        target_lang: target_lang.to_string(),
+        service: "openai-compatible".to_string(),
+    })
+}
+
+fn translate_with_openai_compatible_to_chinese(
+    text: &str,
+    config: Option<&OpenAiCompatibleConfig>,
+) -> Result<String, String> {
+    request_openai_compatible_translation(
+        config,
+        "将用户提供的 Markdown 文本翻译成中文。只输出译文，不要解释；保留 Markdown 标记和所有形如 __MD_HTML_HOLD_0__ 的占位符不变。",
+        text,
+        4096,
+    )
+}
+
+fn request_openai_compatible_translation(
+    config: Option<&OpenAiCompatibleConfig>,
+    instruction: &str,
+    text: &str,
+    max_tokens: u32,
+) -> Result<String, String> {
+    let config = config.ok_or("OpenAI 兼容服务未配置 API Key".to_string())?;
+    let endpoint = openai_compatible_endpoint(&config.base_url)?;
+    let model = config.model.trim();
+    let api_key = config.api_key.trim();
+
+    if model.is_empty() {
+        return Err("OpenAI 兼容服务未配置模型名称".to_string());
+    }
+    if api_key.is_empty() {
+        return Err("OpenAI 兼容服务未配置 API Key".to_string());
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|_| "OpenAI 兼容服务客户端初始化失败".to_string())?;
+    let response = client
+        .post(endpoint)
+        .bearer_auth(api_key)
+        .json(&json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": instruction },
+                { "role": "user", "content": text }
+            ],
+            "temperature": 0.3,
+            "max_tokens": max_tokens,
+            "stream": false
+        }))
+        .send()
+        .map_err(|_| "OpenAI 兼容服务请求失败，请检查地址、模型和网络".to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("OpenAI 兼容服务请求失败: {}", response.status()));
+    }
+
+    let body: OpenAiCompatibleResponse = response
+        .json()
+        .map_err(|_| "OpenAI 兼容服务返回内容无法解析".to_string())?;
+    let translated = clean_model_output(
+        body.choices
+            .into_iter()
+            .next()
+            .and_then(|choice| choice.message.content)
+            .unwrap_or_default(),
+    );
+    if translated.is_empty() {
+        return Err("OpenAI 兼容服务未返回译文".to_string());
+    }
+
+    Ok(translated)
+}
+
+fn validate_openai_compatible_config(
+    config: Option<&OpenAiCompatibleConfig>,
+) -> Result<(), String> {
+    let config = config.ok_or("OpenAI 兼容服务未配置 API Key".to_string())?;
+    openai_compatible_endpoint(&config.base_url)?;
+    if config.model.trim().is_empty() {
+        return Err("OpenAI 兼容服务未配置模型名称".to_string());
+    }
+    if config.api_key.trim().is_empty() {
+        return Err("OpenAI 兼容服务未配置 API Key".to_string());
+    }
+    Ok(())
+}
+
+fn openai_compatible_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
+    let mut endpoint =
+        reqwest::Url::parse(base_url.trim()).map_err(|_| "OpenAI 兼容服务地址无效".to_string())?;
+    if !matches!(endpoint.scheme(), "http" | "https") || endpoint.host_str().is_none() {
+        return Err("OpenAI 兼容服务地址必须是 HTTP(S) URL".to_string());
+    }
+    if !endpoint.username().is_empty() || endpoint.password().is_some() {
+        return Err("OpenAI 兼容服务地址不能包含账号或密码".to_string());
+    }
+    if endpoint.query().is_some() || endpoint.fragment().is_some() {
+        return Err("OpenAI 兼容服务地址不能包含查询参数或片段".to_string());
+    }
+
+    let path = endpoint.path().trim_end_matches('/');
+    let normalized_path = if path.ends_with("/chat/completions") {
+        path.to_string()
+    } else {
+        format!("{}/chat/completions", path)
+    };
+    endpoint.set_path(&normalized_path);
+    Ok(endpoint)
 }
 
 fn request_ollama_translation(prompt: &str, num_predict: u32) -> Result<String, String> {
@@ -848,7 +1020,10 @@ fn hmac_sha256_hex(key: &[u8], message: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
+    use std::net::TcpListener;
     use std::path::PathBuf;
+    use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_test_root(name: &str) -> PathBuf {
@@ -868,9 +1043,114 @@ mod tests {
     fn validate_translate_request_rejects_invalid_inputs() {
         assert!(validate_translate_request("ollama", "hello").is_ok());
         assert!(validate_translate_request("tencent", "你好").is_ok());
+        assert!(validate_translate_request("openai-compatible", "hello").is_ok());
         assert!(validate_translate_request("unknown", "hello").is_err());
         assert!(validate_translate_request("ollama", "").is_err());
         assert!(validate_translate_request("ollama", &"a".repeat(5001)).is_err());
+    }
+
+    #[test]
+    fn openai_compatible_endpoint_accepts_base_or_chat_completion_url() {
+        assert_eq!(
+            openai_compatible_endpoint("https://api.deepseek.com/v1")
+                .unwrap()
+                .as_str(),
+            "https://api.deepseek.com/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_compatible_endpoint("https://example.com/v1/chat/completions/")
+                .unwrap()
+                .as_str(),
+            "https://example.com/v1/chat/completions"
+        );
+        assert!(openai_compatible_endpoint("file:///tmp/provider").is_err());
+        assert!(openai_compatible_endpoint("https://example.com/v1?key=value").is_err());
+    }
+
+    #[test]
+    fn openai_compatible_config_requires_endpoint_model_and_api_key() {
+        let configured = OpenAiCompatibleConfig {
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-chat".to_string(),
+            api_key: "test-key".to_string(),
+        };
+        assert!(validate_openai_compatible_config(Some(&configured)).is_ok());
+        assert!(validate_openai_compatible_config(None).is_err());
+
+        let missing_model = OpenAiCompatibleConfig {
+            model: " ".to_string(),
+            ..configured
+        };
+        assert!(validate_openai_compatible_config(Some(&missing_model)).is_err());
+    }
+
+    #[test]
+    fn openai_compatible_translation_uses_chat_completions_with_bearer_auth() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_http_request(&mut stream);
+            let request_lowercase = request.to_ascii_lowercase();
+            assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1"));
+            assert!(request_lowercase.contains("authorization: bearer test-api-key"));
+
+            let body_start = request.find("\r\n\r\n").unwrap() + 4;
+            let body: serde_json::Value = serde_json::from_str(&request[body_start..]).unwrap();
+            assert_eq!(body["model"], "deepseek-chat");
+            assert_eq!(body["messages"][1]["content"], "Hello");
+
+            let response_body = r#"{"choices":[{"message":{"content":"你好"}}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+
+        let config = OpenAiCompatibleConfig {
+            base_url: format!("http://{}/v1", address),
+            model: "deepseek-chat".to_string(),
+            api_key: "test-api-key".to_string(),
+        };
+        let translated = request_openai_compatible_translation(
+            Some(&config),
+            "Translate the user's text.",
+            "Hello",
+            512,
+        )
+        .unwrap();
+
+        assert_eq!(translated, "你好");
+        server.join().unwrap();
+    }
+
+    fn read_http_request(stream: &mut std::net::TcpStream) -> String {
+        let mut request = Vec::new();
+        let mut buffer = [0; 4096];
+
+        loop {
+            let bytes_read = stream.read(&mut buffer).unwrap();
+            request.extend_from_slice(&buffer[..bytes_read]);
+            let Some(headers_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let headers_end = headers_end + 4;
+            let headers = std::str::from_utf8(&request[..headers_end]).unwrap();
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    line.strip_prefix("content-length: ")
+                        .or_else(|| line.strip_prefix("Content-Length: "))
+                })
+                .and_then(|value| value.trim().parse::<usize>().ok())
+                .unwrap_or_default();
+            if request.len() >= headers_end + content_length {
+                return String::from_utf8(request).unwrap();
+            }
+        }
     }
 
     #[test]
