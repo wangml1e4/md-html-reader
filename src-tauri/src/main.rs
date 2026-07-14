@@ -37,6 +37,8 @@ fn main() {
             search::search_content,
             search::export_as_html,
             translation::translate_text,
+            translation::test_openai_compatible_connection,
+            translation::fetch_openai_compatible_models,
             translation::translate_markdown_to_chinese,
             translation::suggest_document_improvements,
             translation::optimize_document_with_comments,

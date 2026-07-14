@@ -711,6 +711,57 @@ describe('App core user flow', () => {
     expect(window.localStorage.getItem('md-html-reader.openai-compatible.apiKey')).toBeNull()
   })
 
+  it('保存、测试并拉取 OpenAI 兼容模型配置', async () => {
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'test_openai_compatible_connection') {
+        expect(args).toEqual({
+          baseUrl: 'https://api.deepseek.com/v1',
+          apiKey: 'test-api-key',
+        })
+        return { modelCount: 2 }
+      }
+      if (command === 'fetch_openai_compatible_models') {
+        expect(args).toEqual({
+          baseUrl: 'https://api.deepseek.com/v1',
+          apiKey: 'test-api-key',
+        })
+        return ['deepseek-chat', 'deepseek-reasoner']
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.get('[aria-label="配置 OpenAI 兼容模型"]').trigger('click')
+    await wrapper.get('input[placeholder="https://api.deepseek.com/v1"]').setValue('https://api.deepseek.com/v1')
+    await wrapper.get('input[placeholder="sk-..."]').setValue('test-api-key')
+
+    await wrapper.findAll('button').find(button => button.text() === '测试连接')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('连接成功，可获取 2 个模型')
+
+    await wrapper.findAll('button').find(button => button.text() === '拉取模型列表')!.trigger('click')
+    await flushPromises()
+    expect((wrapper.get('input[placeholder="deepseek-chat"]').element as HTMLInputElement).value)
+      .toBe('deepseek-chat')
+    expect(wrapper.findAll('#openai-compatible-models option').map(option => option.attributes('value')))
+      .toEqual(['deepseek-chat', 'deepseek-reasoner'])
+
+    await wrapper.findAll('button').find(button => button.text() === '保存配置')!.trigger('click')
+    expect(window.localStorage.getItem('md-html-reader.openai-compatible.baseUrl')).toBe('https://api.deepseek.com/v1')
+    expect(window.localStorage.getItem('md-html-reader.openai-compatible.model')).toBe('deepseek-chat')
+    expect(window.localStorage.getItem('md-html-reader.openai-compatible.apiKey')).toBeNull()
+  })
+
+  it('文件夹选择失败时显示原因而不是静默失败', async () => {
+    vi.mocked(open).mockRejectedValue(new Error('dialog permission denied'))
+
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('打开文件夹失败：dialog permission denied')
+  })
+
   it('保存当前 Markdown 后生成并打开中文翻译副本', async () => {
     let translated = false
     vi.mocked(open).mockResolvedValue('/tmp/workspace')

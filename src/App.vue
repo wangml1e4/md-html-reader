@@ -68,12 +68,19 @@
         <button
           @click="openFolder"
           class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-          :disabled="isMarkdownTranslating"
+          :disabled="isMarkdownTranslating || isFolderOpening"
         >
-          打开文件夹
+          {{ isFolderOpening ? '打开中...' : '打开文件夹' }}
         </button>
       </div>
     </header>
+
+    <div
+      v-if="workspaceError"
+      class="px-4 py-2 text-sm border-b bg-red-50 text-red-600 border-red-100"
+    >
+      {{ workspaceError }}
+    </div>
 
     <div
       v-if="markdownTranslationMessage || markdownTranslationError"
@@ -120,6 +127,7 @@
               class="mt-1 w-full px-2 py-1 text-sm border border-gray-300 rounded"
               placeholder="deepseek-chat"
               autocomplete="off"
+              list="openai-compatible-models"
             />
           </label>
           <label class="text-xs text-gray-600">
@@ -133,10 +141,38 @@
             />
           </label>
         </div>
+        <datalist id="openai-compatible-models">
+          <option v-for="model in openAiModels" :key="model" :value="model" />
+        </datalist>
+        <div class="flex flex-wrap gap-2">
+          <button
+            class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            :disabled="!openAiConnectionConfigComplete"
+            @click="saveOpenAiConfiguration"
+          >
+            保存配置
+          </button>
+          <button
+            class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            :disabled="!openAiConnectionConfigComplete || isTestingOpenAiConnection"
+            @click="testOpenAiConnection"
+          >
+            {{ isTestingOpenAiConnection ? '测试中...' : '测试连接' }}
+          </button>
+          <button
+            class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+            :disabled="!openAiConnectionConfigComplete || isLoadingOpenAiModels"
+            @click="loadOpenAiModels"
+          >
+            {{ isLoadingOpenAiModels ? '拉取中...' : '拉取模型列表' }}
+          </button>
+        </div>
         <p class="text-xs text-gray-500">
           使用 OpenAI Chat Completions 兼容协议。DeepSeek 示例：Base URL 为 https://api.deepseek.com/v1，模型为 deepseek-chat。
-          API Key 只保存在本次运行内，不写入磁盘。
+          “保存配置”会保存 Base URL 和模型；API Key 只保存在本次运行内，不写入磁盘。
         </p>
+        <p v-if="openAiConfigError" class="text-xs text-red-600">{{ openAiConfigError }}</p>
+        <p v-else-if="openAiConfigMessage" class="text-xs text-green-700">{{ openAiConfigMessage }}</p>
         <p v-if="translationService === 'openai-compatible' && !openAiConfigComplete" class="text-xs text-red-600">
           请填写 Base URL、模型和 API Key 后再翻译。
         </p>
@@ -401,6 +437,11 @@ const openAiConfigOpen = ref(false)
 const openAiBaseUrl = ref(readOpenAiSetting('baseUrl'))
 const openAiModel = ref(readOpenAiSetting('model'))
 const openAiApiKey = ref('')
+const openAiModels = ref<string[]>([])
+const isTestingOpenAiConnection = ref(false)
+const isLoadingOpenAiModels = ref(false)
+const openAiConfigMessage = ref<string | null>(null)
+const openAiConfigError = ref<string | null>(null)
 const translationState = ref<TranslationState>('idle')
 const translationOriginal = ref('')
 const translationTranslated = ref('')
@@ -410,6 +451,8 @@ const exportMessage = ref<string | null>(null)
 const isMarkdownTranslating = ref(false)
 const markdownTranslationMessage = ref<string | null>(null)
 const markdownTranslationError = ref<string | null>(null)
+const isFolderOpening = ref(false)
+const workspaceError = ref<string | null>(null)
 const assistantMode = ref<DocumentAssistantMode | null>(null)
 const isAssistantRunning = ref(false)
 const isAssistantApplying = ref(false)
@@ -432,6 +475,9 @@ const currentIsHtml = computed(() => {
 })
 const openAiConfigComplete = computed(() => {
   return Boolean(openAiBaseUrl.value.trim() && openAiModel.value.trim() && openAiApiKey.value.trim())
+})
+const openAiConnectionConfigComplete = computed(() => {
+  return Boolean(openAiBaseUrl.value.trim() && openAiApiKey.value.trim())
 })
 const assistantServiceReady = computed(() => {
   return translationService.value !== 'tencent'
@@ -501,6 +547,67 @@ function persistOpenAiSettings() {
   }
 }
 
+function openAiConnectionPayload() {
+  const baseUrl = openAiBaseUrl.value.trim()
+  const apiKey = openAiApiKey.value.trim()
+  if (!baseUrl || !apiKey) {
+    throw new Error('请先填写 Base URL 和 API Key')
+  }
+  return { baseUrl, apiKey }
+}
+
+function saveOpenAiConfiguration() {
+  try {
+    openAiConnectionPayload()
+    persistOpenAiSettings()
+    openAiConfigError.value = null
+    openAiConfigMessage.value = '配置已保存；API Key 仅保留在本次运行内'
+  } catch (error) {
+    openAiConfigMessage.value = null
+    openAiConfigError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function testOpenAiConnection() {
+  try {
+    const { baseUrl, apiKey } = openAiConnectionPayload()
+    isTestingOpenAiConnection.value = true
+    openAiConfigError.value = null
+    openAiConfigMessage.value = null
+    const result = await invoke<{ modelCount: number }>('test_openai_compatible_connection', {
+      baseUrl,
+      apiKey,
+    })
+    openAiConfigMessage.value = `连接成功，可获取 ${result.modelCount} 个模型`
+  } catch (error) {
+    openAiConfigError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    isTestingOpenAiConnection.value = false
+  }
+}
+
+async function loadOpenAiModels() {
+  try {
+    const { baseUrl, apiKey } = openAiConnectionPayload()
+    isLoadingOpenAiModels.value = true
+    openAiConfigError.value = null
+    openAiConfigMessage.value = null
+    const models = await invoke<string[]>('fetch_openai_compatible_models', { baseUrl, apiKey })
+    openAiModels.value = models
+    if (!openAiModel.value.trim() && models.length) {
+      openAiModel.value = models[0]
+      persistOpenAiSettings()
+    }
+    openAiConfigMessage.value = models.length
+      ? `已加载 ${models.length} 个模型，可在“模型”输入框中选择或输入自定义名称`
+      : '连接成功，但服务未返回可用模型'
+  } catch (error) {
+    openAiConfigError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    isLoadingOpenAiModels.value = false
+  }
+}
+
 function assistantWritePermissionKey(scope: AssistantWritePermissionScope) {
   return `md-html-reader.assistant.permanent-write-permission.${encodeURIComponent(JSON.stringify(scope))}`
 }
@@ -546,23 +653,34 @@ function openAiConfigPayload(): OpenAiCompatibleConfig | undefined {
 }
 
 async function openFolder() {
-  if (isMarkdownTranslating.value) return
+  if (isMarkdownTranslating.value || isFolderOpening.value) return
 
+  isFolderOpening.value = true
+  workspaceError.value = null
   try {
     const selected = isE2E
       ? e2eWorkspacePath
       : await open({
           directory: true,
           multiple: false,
+          title: '选择工作区文件夹',
+          defaultPath: workspace.folderPath || undefined,
         })
 
-    // plugin-dialog 目录模式返回 string | null
-    if (selected && typeof selected === 'string') {
-      if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-workspace'))) return
-      if (await workspace.loadFolder(selected)) comments.clearCurrentFile()
+    const selectedPath = Array.isArray(selected) ? selected[0] : selected
+    if (!selectedPath) return
+
+    if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-workspace'))) return
+    if (!(await workspace.loadFolder(selectedPath))) {
+      throw new Error('无法读取所选文件夹，请检查访问权限后重试')
     }
+    comments.clearCurrentFile()
   } catch (error) {
     console.error('打开文件夹失败:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    workspaceError.value = `打开文件夹失败：${message}`
+  } finally {
+    isFolderOpening.value = false
   }
 }
 

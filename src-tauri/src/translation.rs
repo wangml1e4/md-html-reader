@@ -57,6 +57,22 @@ pub struct OpenAiCompatibleConfig {
     api_key: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenAiCompatibleConnectionResult {
+    pub model_count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleModelsResponse {
+    data: Vec<OpenAiCompatibleModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleModel {
+    id: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct OpenAiCompatibleResponse {
     choices: Vec<OpenAiCompatibleChoice>,
@@ -130,6 +146,25 @@ pub fn translate_text(
         ),
         _ => Err("未知翻译服务".to_string()),
     }
+}
+
+#[command]
+pub fn test_openai_compatible_connection(
+    base_url: String,
+    api_key: String,
+) -> Result<OpenAiCompatibleConnectionResult, String> {
+    let models = request_openai_compatible_models(&base_url, &api_key)?;
+    Ok(OpenAiCompatibleConnectionResult {
+        model_count: models.len(),
+    })
+}
+
+#[command]
+pub fn fetch_openai_compatible_models(
+    base_url: String,
+    api_key: String,
+) -> Result<Vec<String>, String> {
+    request_openai_compatible_models(&base_url, &api_key)
 }
 
 #[command]
@@ -423,6 +458,41 @@ fn request_openai_compatible_completion(
     Ok(output)
 }
 
+fn request_openai_compatible_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String> {
+    let endpoint = openai_compatible_models_endpoint(base_url)?;
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("OpenAI 兼容服务未配置 API Key".to_string());
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|_| "OpenAI 兼容服务客户端初始化失败".to_string())?;
+    let response = client
+        .get(endpoint)
+        .bearer_auth(api_key)
+        .send()
+        .map_err(|_| "无法连接 OpenAI 兼容服务，请检查地址和网络".to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("OpenAI 兼容服务连接失败: {}", response.status()));
+    }
+
+    let body: OpenAiCompatibleModelsResponse = response
+        .json()
+        .map_err(|_| "OpenAI 兼容服务的模型列表无法解析".to_string())?;
+    let mut models: Vec<String> = body
+        .data
+        .into_iter()
+        .map(|model| model.id.trim().to_string())
+        .filter(|model| !model.is_empty())
+        .collect();
+    models.sort();
+    models.dedup();
+    Ok(models)
+}
+
 fn validate_openai_compatible_config(
     config: Option<&OpenAiCompatibleConfig>,
 ) -> Result<(), String> {
@@ -438,6 +508,20 @@ fn validate_openai_compatible_config(
 }
 
 fn openai_compatible_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
+    let mut endpoint = openai_compatible_base_url(base_url)?;
+    let path = endpoint.path().trim_end_matches('/');
+    endpoint.set_path(&format!("{}/chat/completions", path));
+    Ok(endpoint)
+}
+
+fn openai_compatible_models_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
+    let mut endpoint = openai_compatible_base_url(base_url)?;
+    let path = endpoint.path().trim_end_matches('/');
+    endpoint.set_path(&format!("{}/models", path));
+    Ok(endpoint)
+}
+
+fn openai_compatible_base_url(base_url: &str) -> Result<reqwest::Url, String> {
     let mut endpoint =
         reqwest::Url::parse(base_url.trim()).map_err(|_| "OpenAI 兼容服务地址无效".to_string())?;
     if !matches!(endpoint.scheme(), "http" | "https") || endpoint.host_str().is_none() {
@@ -451,11 +535,11 @@ fn openai_compatible_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
     }
 
     let path = endpoint.path().trim_end_matches('/');
-    let normalized_path = if path.ends_with("/chat/completions") {
-        path.to_string()
-    } else {
-        format!("{}/chat/completions", path)
-    };
+    let normalized_path = path
+        .strip_suffix("/chat/completions")
+        .or_else(|| path.strip_suffix("/models"))
+        .unwrap_or(path)
+        .to_string();
     endpoint.set_path(&normalized_path);
     Ok(endpoint)
 }
@@ -1219,7 +1303,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_compatible_endpoint_accepts_base_or_chat_completion_url() {
+    fn openai_compatible_endpoints_accept_base_or_resource_url() {
         assert_eq!(
             openai_compatible_endpoint("https://api.deepseek.com/v1")
                 .unwrap()
@@ -1231,6 +1315,18 @@ mod tests {
                 .unwrap()
                 .as_str(),
             "https://example.com/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_compatible_models_endpoint("https://example.com/v1/chat/completions/")
+                .unwrap()
+                .as_str(),
+            "https://example.com/v1/models"
+        );
+        assert_eq!(
+            openai_compatible_models_endpoint("https://example.com/v1/models")
+                .unwrap()
+                .as_str(),
+            "https://example.com/v1/models"
         );
         assert!(openai_compatible_endpoint("file:///tmp/provider").is_err());
         assert!(openai_compatible_endpoint("https://example.com/v1?key=value").is_err());
@@ -1292,6 +1388,35 @@ mod tests {
         .unwrap();
 
         assert_eq!(translated, "你好");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn openai_compatible_model_listing_uses_bearer_auth_and_deduplicates_models() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_http_request(&mut stream);
+            let request_lowercase = request.to_ascii_lowercase();
+            assert!(request.starts_with("GET /v1/models HTTP/1.1"));
+            assert!(request_lowercase.contains("authorization: bearer test-api-key"));
+
+            let response_body = r#"{"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"},{"id":"deepseek-chat"},{"id":" "}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+
+        let result = test_openai_compatible_connection(
+            format!("http://{}/v1", address),
+            "test-api-key".to_string(),
+        )
+        .unwrap();
+        assert_eq!(result.model_count, 2);
         server.join().unwrap();
     }
 

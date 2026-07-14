@@ -17,7 +17,11 @@
     "allow-search-content",
     "allow-export-as-html",
     "allow-translate-text",
+    "allow-test-openai-compatible-connection",
+    "allow-fetch-openai-compatible-models",
     "allow-translate-markdown-to-chinese",
+    "allow-suggest-document-improvements",
+    "allow-optimize-document-with-comments",
     "allow-open-html-in-default-browser"
   ]
 }
