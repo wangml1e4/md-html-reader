@@ -2,6 +2,8 @@
 
 本指南只描述当前主线：Vue + Milkdown + Tauri。历史 HTML 原型可以单独打开验证，但不作为桌面应用发布验收标准。
 
+正式发布结论和门禁状态统一见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
+
 ## 当前验证命令
 
 从仓库根目录执行：
@@ -148,31 +150,6 @@ pnpm test:ui
 pnpm test:coverage
 ```
 
-## CI 建议
+## CI
 
-```yaml
-name: Validate
-
-on: [push, pull_request]
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - run: CI=true pnpm install --frozen-lockfile
-      - run: pnpm test -- --run
-      - run: pnpm build
-      - run: cargo test
-        working-directory: src-tauri
-      - run: pnpm run tauri:build
-      - run: pnpm run tauri:build:dmg
-```
-
-**当前测试状态**：自动化测试已覆盖核心数据链路、App 级用户流、搜索/导出入口、Rust 命令层核心路径、真实窗口核心 E2E、新进程重开后的评论持久化、`.app` 构建、ad-hoc 签名的 headless DMG 生成和本地 DMG 启动 smoke；上述链路也已在不含 `node_modules`、`dist` 和 `src-tauri/target` 的临时副本中验证。Developer ID 签名/公证脚本已就绪，但当前机器没有有效 Developer ID identity。发布判断仍依赖一次真实 Tauri 窗口人工端到端验收记录、Developer ID 签名、公证与 notarized 安装后启动验证。
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 使用 macOS runner，运行类型检查、前端单元测试、生产构建、Rust 测试和真实 Tauri E2E。它不执行需要签名证书的发布步骤；远端通过记录和签名/公证状态统一在 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) 复核。

@@ -2,6 +2,8 @@
 
 This file defines the current manual acceptance process for the Vue + Milkdown + Tauri mainline and links the latest auditable result.
 
+It covers only the native manual-interaction gate. The overall release decision and every remaining gate are maintained in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+
 ## Prepare
 
 ```bash
@@ -36,3 +38,5 @@ The native interaction checklist requested for the current release passed on 202
 The unsaved-content follow-up was validated on 2026-07-12. See `docs/manual-acceptance-2026-07-12.md` for the native Yes/No dialog, paused auto-save, discard behavior, automated close-lifecycle evidence, and the remaining Computer Use limitation around activating the macOS close control.
 
 Automated E2E separately covers the real Tauri WebView, Rust commands, temporary filesystem path, comments, search, export, and new-process comment persistence. It still uses an e2e fixed path, a test-only editor helper, and programmatic text selection, so the manual record remains the evidence for native dialogs and real keyboard input.
+
+When a native interaction changes, rerun the affected path and update its auditable record before marking the corresponding release-checklist gate complete.

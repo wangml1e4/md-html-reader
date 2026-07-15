@@ -141,16 +141,20 @@ export const useCommentsStore = defineStore('comments', () => {
       throw new Error('未加载评论文件')
     }
 
-    comment.status = status
-    comment.updatedAt = Date.now()
+    const updatedComment: Comment = {
+      ...comment,
+      status,
+      updatedAt: Date.now(),
+    }
 
     try {
       await invoke('update_comment', {
         workspacePath: currentWorkspacePath.value,
         fileHash: currentFileHash.value,
         filePath: currentFilePath.value,
-        comment,
+        comment: updatedComment,
       })
+      Object.assign(comment, updatedComment)
     } catch (error) {
       console.error('更新评论失败:', error)
       throw error

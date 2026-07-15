@@ -291,5 +291,37 @@ describe('comments store', () => {
 
       expect(invoke).not.toHaveBeenCalled()
     })
+
+    it('update_comment 拒绝时应保持原状态不变', async () => {
+      const now = 1000
+      vi.useFakeTimers()
+      vi.setSystemTime(now)
+
+      const store = useCommentsStore()
+      store.currentWorkspacePath = '/path/to'
+      store.currentFileHash = 'abc123'
+      store.currentFilePath = '/path/to/file.md'
+      store.list = [
+        {
+          id: 'comment-1',
+          fileHash: 'abc123',
+          anchor: { quote: 'test', offset: 0, length: 4 },
+          content: 'Test',
+          status: 'open',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]
+
+      vi.mocked(invoke).mockRejectedValue(new Error('disk full'))
+      vi.setSystemTime(now + 10)
+
+      await expect(store.updateCommentStatus('comment-1', 'resolved')).rejects.toThrow('disk full')
+
+      expect(store.list[0]).toMatchObject({
+        status: 'open',
+        updatedAt: now,
+      })
+    })
   })
 })

@@ -68,12 +68,9 @@ cargo test
 - AI 阅读版仅发送经用户确认的当前 Markdown，不会读取整个工作区；生成的 HTML 不会覆盖原文件或已有阅读版
 - 默认每次写入优化稿前再次确认；永久修改权按当前工作区、文件和服务/模型隔离，可随时撤销
 
-### 🚧 待完善
+### 🚧 发布状态
 
-- 核心路径仍需要一次人工端到端验收记录
-- 原生目录选择、导出保存对话框、真实键盘编辑和手工关闭重开操作仍需要验收记录
-- Tauri 安装包 Developer ID 签名、公证和发布流程未闭环；headless DMG 可生成并做 ad-hoc 签名
-- 大文件性能和评论高亮视觉联动仍需增强
+发布结论和逐项门禁以 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) 为准。原生人工交互已在 2026-07-11 和 2026-07-12 留有验收记录；正式 macOS 发布仍受 Developer ID 签名、公证和 notarized DMG 安装验证阻塞。大文件性能和评论高亮视觉联动也仍需增强。
 
 ---
 
@@ -231,7 +228,7 @@ pnpm run manual:prepare
 pnpm exec tauri dev
 ```
 
-该命令会生成临时验收工作区和结果模板，详见 [MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md)。手工验收结果未记录前，不能把发布状态写成完成。
+该命令会生成临时验收工作区和结果模板，详见 [MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md)。当前发布门禁与已有人工验收记录统一见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 
 ### 构建 macOS App
 
@@ -306,5 +303,5 @@ fcc3f30 - feat: 阶段 0 - Tauri + 早期前端项目脚手架
 
 ---
 
-**状态**：验证中，当前主线代码、核心窗口 E2E、`.app`、headless DMG 构建和本地 DMG smoke 已具备；Developer ID 签名/公证脚本已就绪但缺少本机证书，发布前仍需人工端到端验收和正式公证闭环
+**状态**：内测验证中。正式 macOS 发布尚待 Developer ID 签名、公证和 notarized DMG 安装验证；完整门禁见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 **最后更新**：2026-07-03

@@ -1,0 +1,29 @@
+name: Validate desktop app
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - run: CI=true pnpm install --frozen-lockfile
+      - run: pnpm exec vue-tsc --noEmit
+      - run: pnpm test -- --run
+      - run: pnpm build
+      - run: cargo test
+        working-directory: src-tauri
+      - run: pnpm run test:e2e

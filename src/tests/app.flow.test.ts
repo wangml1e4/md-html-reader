@@ -126,7 +126,8 @@ vi.mock('../components/CommentSidebar.vue', () => ({
     template: `
       <div data-testid="comment-sidebar">
         <div v-for="comment in comments" :key="comment.id">
-          {{ comment.content }}
+          {{ comment.content }}|{{ comment.status }}
+          <button data-testid="resolve-comment" @click="$emit('resolve', comment.id)">解决评论</button>
         </div>
       </div>
     `,
@@ -815,6 +816,42 @@ describe('App core user flow', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('打开文件夹失败：dialog permission denied')
+  })
+
+  it('解决评论失败时保留原状态并显示原因', async () => {
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'list_files') {
+        return [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') return '# Note'
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') {
+        return [{
+          id: 'comment-1',
+          fileHash: 'hash-note',
+          anchor: { quote: 'Note', offset: 2, length: 4 },
+          content: 'Review note',
+          status: 'open',
+          createdAt: 1,
+          updatedAt: 1,
+        }]
+      }
+      if (command === 'update_comment') throw new Error('disk full')
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="resolve-comment"]').trigger('click')
+    await flushPromises()
+
+    expect(useCommentsStore(pinia).list[0]).toMatchObject({ status: 'open', updatedAt: 1 })
+    expect(wrapper.text()).toContain('解决评论失败：disk full')
   })
 
   it('保存当前 Markdown 后生成并打开中文翻译副本', async () => {

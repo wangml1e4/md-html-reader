@@ -23,8 +23,8 @@
 
 | 优先级 | 风险 | 影响 | 验证方式 |
 |--------|------|------|----------|
-| P0 | 未完成一次真实人工端到端验收记录 | 自动化已覆盖核心窗口链路和新进程重开评论读取，但原生系统对话框、真实键盘编辑和手工关闭重开操作仍未记录 | 按 `TESTING.md` 手工验收清单逐项记录 |
 | P0 | Developer ID 签名、公证和 notarized 安装后启动验证未闭环 | `release:notarize` 已就绪，但当前机器没有有效 Developer ID identity，不能作为正式可信分发包发布 | 配置 Developer ID 证书和 notarytool profile 后执行 `pnpm run release:notarize` |
+| P1 | GitHub Actions 尚无该分支的远端通过记录 | 已添加 CI 工作流，但首次 push 或 pull request 前不能证明托管环境可复现本地门禁 | 确认 [CI 工作流](.github/workflows/ci.yml) 对目标提交通过 |
 | P1 | 窗口 E2E 仍含测试专用编辑钩子和程序化文本选择辅助 | 自动化不能证明 Milkdown 真实键盘输入和评论鼠标拖选链路 | 后续减少测试钩子，或补人工键盘输入和鼠标选择记录 |
 | P1 | 评论高亮和重定位的视觉反馈仍弱 | 评论存在但用户不一定能准确看到关联文本 | 组件测试 + 手工 UI 检查 |
 | P2 | 大文件性能未压测 | 大文档编辑、搜索、重定位可能卡顿 | 构造 1MB+ Markdown 压测 |
@@ -33,16 +33,16 @@
 
 ### 阶段 1：发布前验证
 
-1. 执行 `pnpm run manual:prepare`，再按 `TESTING.md` 手工端到端验收清单记录结果。
-2. 记录每一步结果和阻塞点。
+1. 在 GitHub 上运行 [CI 工作流](.github/workflows/ci.yml)，确认目标提交通过。
+2. 按 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) 复核已有人工验收和自动化证据。
 3. 跑 `pnpm run tauri:build`，确认 `.app` 产物能启动。
 4. 跑 `pnpm run tauri:build:dmg`，确认 headless DMG 产物能生成。
 5. 配置 Developer ID 证书和 notarytool profile 后执行 `pnpm run release:notarize`，补齐公证和 notarized 安装后启动验证。
 
 ### 阶段 2：补齐核心用户路径
 
-1. 用人工验收补齐原生目录选择、导出保存对话框和手工关闭重开操作。
-2. 用人工验收核对 Milkdown 真实键盘输入和鼠标选区链路。
+1. 原生交互变更后，按 [MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md) 重新验收受影响路径。
+2. 继续减少 E2E 对测试专用编辑钩子和程序化选择辅助的依赖。
 3. 增强评论显示：高亮、选中联动、已解决评论过滤。
 4. 继续收敛 WebdriverIO E2E，减少测试专用编辑钩子和程序化选择辅助。
 
@@ -57,7 +57,7 @@
 
 1. 明确版本号、发布说明和已知问题。
 2. 建立 macOS Developer ID 签名、公证和 notarized 安装后启动验证流程。
-3. 增加 GitHub Actions 验证流水线。
+3. 保持 GitHub Actions 验证流水线对每个发布候选提交通过。
 4. 准备用户使用说明和故障排查说明。
 
 ## 暂不优先
@@ -70,4 +70,4 @@
 
 这些能力有价值，但不应早于当前 P0/P1 闭环。
 
-**当前状态**：主线功能具备基础代码和自动化测试支撑，`.app`、ad-hoc 签名的 headless DMG、本地 DMG smoke 和真实窗口核心 E2E 可验证；距离发布还差真实人工端到端验收记录、Developer ID 签名、公证和 notarized 安装后启动验证。
+**当前状态**：发布门禁以 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) 为准。已有人工验收记录和本地自动化证据；正式发布仍缺 GitHub Actions 对目标提交的通过记录，以及 Developer ID 签名、公证和 notarized 安装验证。

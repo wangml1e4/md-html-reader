@@ -1059,10 +1059,13 @@ async function applyAssistantOptimization() {
 }
 
 async function handleResolveComment(commentId: string) {
+  workspaceError.value = null
   try {
     await comments.updateCommentStatus(commentId, 'resolved')
   } catch (error) {
     console.error('解决评论失败:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    workspaceError.value = `解决评论失败：${message}`
   }
 }
 
