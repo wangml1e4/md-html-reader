@@ -18,12 +18,33 @@
         >
           搜索内容
         </button>
-        <button
-          @click="exportHtml"
-          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-          :disabled="!workspace.currentFile || isExporting"
+        <select
+          v-model="htmlGenerationMode"
+          class="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded"
+          aria-label="HTML 生成模式"
         >
-          导出 HTML
+          <option value="default">默认渲染</option>
+          <option value="ai-reading">AI 苹果风</option>
+        </select>
+        <label
+          class="flex items-center gap-1 px-2 py-1 text-sm text-gray-700 bg-gray-100 rounded disabled:opacity-50"
+          title="在导出的单文件 HTML 中嵌入原 Markdown，可切换分屏查看"
+        >
+          <input
+            v-model="includeMarkdownSource"
+            type="checkbox"
+            aria-label="嵌入原 Markdown（支持分屏）"
+            :disabled="!currentIsMarkdown || isExporting"
+          />
+          嵌入 Markdown
+        </label>
+        <button
+          @click="generateHtml"
+          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+          :disabled="!currentIsMarkdown || isExporting || (htmlGenerationMode === 'ai-reading' && !assistantServiceReady)"
+          :title="htmlGenerationMode === 'ai-reading' ? assistantDisabledReason : ''"
+        >
+          {{ isExporting ? '生成中...' : htmlGenerationMode === 'ai-reading' ? '生成阅读 HTML' : '生成 HTML' }}
         </button>
         <select
           v-model="translationService"
@@ -372,6 +393,7 @@ type DisplayMode = 'filename' | 'title'
 type TranslationService = 'ollama' | 'tencent' | 'openai-compatible'
 type TranslationState = 'idle' | 'loading' | 'success' | 'error'
 type DocumentAssistantMode = 'suggestions' | 'optimize'
+type HtmlGenerationMode = 'default' | 'ai-reading'
 interface OutlineHeading {
   level: number
   text: string
@@ -388,6 +410,10 @@ interface MarkdownTranslationResult {
   outputPath: string
   translatedCharacters: number
   translatedSegments: number
+}
+interface AiReadingHtmlResult {
+  outputPath: string
+  summaryCharacters: number
 }
 interface OpenAiCompatibleConfig {
   baseUrl: string
@@ -433,6 +459,8 @@ const locateToken = ref(0)
 const outlineOpen = ref(false)
 const editorRef = ref<EditorHandle | null>(null)
 const translationService = ref<TranslationService>('ollama')
+const htmlGenerationMode = ref<HtmlGenerationMode>('default')
+const includeMarkdownSource = ref(false)
 const openAiConfigOpen = ref(false)
 const openAiBaseUrl = ref(readOpenAiSetting('baseUrl'))
 const openAiModel = ref(readOpenAiSetting('model'))
@@ -728,13 +756,43 @@ async function saveFile(content: string) {
   }
 }
 
+async function saveMarkdownBeforeHtmlGeneration(sourcePath: string) {
+  if (editorRef.value?.saveCurrentContent) {
+    await editorRef.value.saveCurrentContent()
+  }
+  if (workspace.currentFile?.path !== sourcePath) {
+    throw new Error('当前文件已切换，请重新生成 HTML')
+  }
+}
+
+async function openGeneratedHtml(workspacePath: string, outputPath: string) {
+  if (!(await workspace.loadFolder(workspacePath))) {
+    throw new Error('刷新文件列表失败')
+  }
+  comments.clearCurrentFile()
+  if (!(await workspace.openFile(outputPath))) {
+    throw new Error('打开生成的 HTML 失败')
+  }
+}
+
+async function generateHtml() {
+  if (htmlGenerationMode.value === 'ai-reading') {
+    await generateAiReadingHtml()
+    return
+  }
+  await exportHtml()
+}
+
 async function exportHtml() {
-  if (!workspace.folderPath || !workspace.currentFile) return
+  const workspacePath = workspace.folderPath
+  const sourceFile = workspace.currentFile
+  if (!workspacePath || !sourceFile || !currentIsMarkdown.value) return
 
   isExporting.value = true
   exportMessage.value = null
   try {
-    const defaultPath = workspace.currentFile.path.replace(/\.[^/.]+$/, '.html')
+    await saveMarkdownBeforeHtmlGeneration(sourceFile.path)
+    const defaultPath = sourceFile.path.replace(/\.[^/.]+$/, '.html')
     const outputPath = isE2E
       ? e2eExportPath
       : await save({
@@ -745,18 +803,54 @@ async function exportHtml() {
     if (!outputPath || typeof outputPath !== 'string') return
 
     await invoke('export_as_html', {
-      workspacePath: workspace.folderPath,
-      filePath: workspace.currentFile.path,
+      workspacePath,
+      filePath: sourceFile.path,
       outputPath,
       cssContent: null,
+      includeMarkdownSource: includeMarkdownSource.value,
     })
-    exportMessage.value = 'HTML 已导出'
+    await openGeneratedHtml(workspacePath, outputPath)
+    exportMessage.value = '已生成并打开 HTML 阅读版'
   } catch (error) {
     console.error('导出 HTML 失败:', error)
     const message = error instanceof Error ? error.message : String(error)
     exportMessage.value = message.includes('路径不在已授权工作区内')
       ? '导出位置必须位于当前工作区内'
       : `HTML 导出失败：${message}`
+  } finally {
+    isExporting.value = false
+  }
+}
+
+async function generateAiReadingHtml() {
+  const workspacePath = workspace.folderPath
+  const sourceFile = workspace.currentFile
+  if (!workspacePath || !sourceFile || !currentIsMarkdown.value || !assistantServiceReady.value) return
+
+  const approved = await ask(
+    `将向当前模型发送“${sourceFile.path.split('/').pop() || sourceFile.path}”的完整 Markdown（${editorRef.value?.getCurrentContent().length || sourceFile.content.length} 字符），用于提炼重点并生成苹果风阅读 HTML。不会发送整个工作区，将创建独立 .reading.html 副本且不会覆盖原文件。${includeMarkdownSource.value ? '生成文件会内嵌该 Markdown，支持分屏查看。' : ''}是否继续？`,
+    { title: 'AI 阅读版授权', kind: 'warning' },
+  )
+  if (!approved) return
+
+  isExporting.value = true
+  exportMessage.value = null
+  try {
+    await saveMarkdownBeforeHtmlGeneration(sourceFile.path)
+    const openaiConfig = openAiConfigPayload()
+    const result = await invoke<AiReadingHtmlResult>('generate_ai_reading_html', {
+      service: translationService.value,
+      workspacePath,
+      filePath: sourceFile.path,
+      includeMarkdownSource: includeMarkdownSource.value,
+      ...(openaiConfig ? { openaiConfig } : {}),
+    })
+    await openGeneratedHtml(workspacePath, result.outputPath)
+    exportMessage.value = `已生成并打开 AI 阅读版（提炼 ${result.summaryCharacters} 字符）`
+  } catch (error) {
+    console.error('生成 AI 阅读版失败:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    exportMessage.value = `AI 阅读版生成失败：${message}`
   } finally {
     isExporting.value = false
   }

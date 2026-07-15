@@ -162,9 +162,55 @@ describe('MD+HTML Reader Tauri window', () => {
     await waitForBodyText('第 3 行')
     await buttonContaining('note.md').click()
 
-    await buttonWithText('导出 HTML').click()
-    await waitForBodyText('HTML 已导出')
-    expect(readFileSync(exportPath, 'utf8')).toContain('Edited keyword')
+    await buttonWithText('生成 HTML').click()
+    await waitForBodyText('已生成并打开 HTML 阅读版')
+    const exported = readFileSync(exportPath, 'utf8')
+    expect(exported).toContain('Edited keyword')
+    expect(exported).toContain('document-outline')
+    expect(exported).not.toContain('data-markdown-source')
+  })
+
+  it('exports an optional Markdown source panel that defaults to reading mode', async () => {
+    await openE2EWorkspaceAndNote()
+    await $('[aria-label="嵌入原 Markdown（支持分屏）"]').click()
+    await buttonWithText('生成 HTML').click()
+    await waitForBodyText('已生成并打开 HTML 阅读版')
+
+    const exported = readFileSync(exportPath, 'utf8')
+    expect(exported).toContain('data-markdown-source')
+    expect(exported).toContain('show-source')
+    expect(exported).toContain('data-view="reading"')
+
+    const mainWindow = await browser.getWindowHandle()
+    await buttonWithText('打开完整预览').click()
+    const previewWindow = await waitForPreviewWindow(mainWindow)
+
+    try {
+      await browser.switchToWindow(previewWindow)
+      await expect($('#reader-layout')).toHaveAttribute('data-view', 'reading')
+      await expect($('#show-source')).toHaveText('分屏查看')
+
+      await browser.execute(() => document.getElementById('show-source')?.click())
+      await expect($('#reader-layout')).toHaveAttribute('data-view', 'split')
+      const markdownSource = await browser.execute(() => document.getElementById('markdown-source')?.textContent)
+      expect(markdownSource).toContain('Original keyword')
+
+      await browser.setWindowSize(800, 800)
+      await browser.waitUntil(
+        async () => await browser.execute(() => document.getElementById('show-source')?.textContent) === 'Markdown',
+        { timeoutMsg: 'Expected narrow preview to switch to Markdown/reading tabs' }
+      )
+      await expect($('#reader-layout')).toHaveAttribute('data-view', 'source')
+      await browser.execute(() => document.getElementById('show-reading')?.click())
+      await expect($('#reader-layout')).toHaveAttribute('data-view', 'reading')
+    } finally {
+      await browser.switchToWindow(previewWindow)
+      await browser.closeWindow()
+      await browser.waitUntil(async () => (await browser.getWindowHandles()).includes(mainWindow), {
+        timeoutMsg: 'Expected the main window to remain after closing the preview window',
+      })
+      await browser.switchToWindow(mainWindow)
+    }
   })
 
   it('uses runtime asset scope to render local CSS, module scripts, images, and author base in an isolated preview window', async () => {

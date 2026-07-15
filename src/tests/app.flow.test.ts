@@ -228,11 +228,10 @@ describe('App core user flow', () => {
       }
 
       if (command === 'read_file') {
-        expect(args).toEqual({
-          workspacePath: '/tmp/workspace',
-          path: '/tmp/workspace/note.md',
-        })
-        return fileContent
+        expect(args.workspacePath).toBe('/tmp/workspace')
+        if (args.path === '/tmp/workspace/note.md') return fileContent
+        if (args.path === '/tmp/workspace/note.html') return '<h1>E2E HTML</h1>'
+        throw new Error(`Unexpected file: ${args.path}`)
       }
 
       if (command === 'write_file') {
@@ -263,6 +262,7 @@ describe('App core user flow', () => {
           filePath: '/tmp/workspace/note.md',
           outputPath: '/tmp/workspace/note.html',
           cssContent: null,
+          includeMarkdownSource: false,
         })
         return undefined
       }
@@ -309,13 +309,13 @@ describe('App core user flow', () => {
     await flushPromises()
     expect(wrapper.get('[data-testid="editor-content"]').text()).toContain('Edited keyword')
 
-    await wrapper.findAll('button').find(button => button.text() === '导出 HTML')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '生成 HTML')!.trigger('click')
     await flushPromises()
     expect(save).toHaveBeenCalledWith({
       defaultPath: '/tmp/workspace/note.html',
       filters: [{ name: 'HTML', extensions: ['html'] }],
     })
-    expect(wrapper.text()).toContain('HTML 已导出')
+    expect(wrapper.text()).toContain('已生成并打开 HTML 阅读版')
   })
 
   it('切换不同文件时重建编辑器实例，避免 Milkdown 保留旧文档', async () => {
@@ -750,6 +750,61 @@ describe('App core user flow', () => {
     expect(window.localStorage.getItem('md-html-reader.openai-compatible.baseUrl')).toBe('https://api.deepseek.com/v1')
     expect(window.localStorage.getItem('md-html-reader.openai-compatible.model')).toBe('deepseek-chat')
     expect(window.localStorage.getItem('md-html-reader.openai-compatible.apiKey')).toBeNull()
+  })
+
+  it('经授权后生成并在应用内打开 AI 苹果风阅读版', async () => {
+    let generated = false
+    vi.mocked(open).mockResolvedValue('/tmp/workspace')
+    vi.mocked(ask).mockResolvedValue(true)
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'list_files') {
+        return generated
+          ? [
+              { name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' },
+              { name: 'note.reading.html', path: '/tmp/workspace/note.reading.html', type: 'file', extension: '.html' },
+            ]
+          : [{ name: 'note.md', path: '/tmp/workspace/note.md', type: 'file', extension: '.md' }]
+      }
+      if (command === 'read_file') {
+        return args.path.endsWith('.reading.html') ? '<h1>AI Reading</h1>' : '# Note\n\nDocument body.'
+      }
+      if (command === 'calculate_file_hash') return 'hash-note'
+      if (command === 'load_comments') return []
+      if (command === 'generate_ai_reading_html') {
+        expect(args).toEqual({
+          service: 'ollama',
+          workspacePath: '/tmp/workspace',
+          filePath: '/tmp/workspace/note.md',
+          includeMarkdownSource: true,
+        })
+        generated = true
+        return {
+          outputPath: '/tmp/workspace/note.reading.html',
+          summaryCharacters: 96,
+        }
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await wrapper.findAll('button').find(button => button.text() === '打开文件夹')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="file-item"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[aria-label="HTML 生成模式"]').setValue('ai-reading')
+    await wrapper.get('[aria-label="嵌入原 Markdown（支持分屏）"]').setValue(true)
+    await wrapper.findAll('button').find(button => button.text() === '生成阅读 HTML')!.trigger('click')
+    await flushPromises()
+
+    expect(ask).toHaveBeenCalledWith(
+      expect.stringContaining('完整 Markdown'),
+      { title: 'AI 阅读版授权', kind: 'warning' },
+    )
+    expect(milkdownLifecycle.saveCurrentContentRequests).toBe(1)
+    expect(useWorkspaceStore(pinia).currentFile?.path).toBe('/tmp/workspace/note.reading.html')
+    expect(wrapper.text()).toContain('已生成并打开 AI 阅读版（提炼 96 字符）')
   })
 
   it('文件夹选择失败时显示原因而不是静默失败', async () => {

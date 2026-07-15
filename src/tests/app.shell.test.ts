@@ -72,6 +72,7 @@ describe('App shell actions', () => {
       content: '# Note',
     }
     await wrapper.vm.$nextTick()
+    expect((wrapper.get('[aria-label="嵌入原 Markdown（支持分屏）"]').element as HTMLInputElement).checked).toBe(false)
 
     await wrapper.get('button:nth-of-type(3)').trigger('click')
     await flushPromises()
@@ -85,8 +86,9 @@ describe('App shell actions', () => {
       filePath: '/tmp/workspace/note.md',
       outputPath: '/tmp/workspace/note.html',
       cssContent: null,
+      includeMarkdownSource: false,
     })
-    expect(wrapper.text()).toContain('HTML 已导出')
+    expect(wrapper.text()).toContain('已生成并打开 HTML 阅读版')
   })
 
   it('工作区外导出路径显示明确限制说明', async () => {

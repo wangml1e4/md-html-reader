@@ -40,6 +40,7 @@ fn main() {
             translation::test_openai_compatible_connection,
             translation::fetch_openai_compatible_models,
             translation::translate_markdown_to_chinese,
+            translation::generate_ai_reading_html,
             translation::suggest_document_improvements,
             translation::optimize_document_with_comments,
             browser_preview::open_html_in_default_browser,
@@ -131,7 +132,7 @@ mod e2e_tests {
 
         let output_path = PathBuf::from(&root).join("note.html");
         let output_path = output_path.to_string_lossy().to_string();
-        search::export_as_html(root.clone(), file_path, output_path.clone(), None).unwrap();
+        search::export_as_html(root.clone(), file_path, output_path.clone(), None, false).unwrap();
         let exported = fs::read_to_string(output_path).unwrap();
         assert!(exported.contains("Edited keyword"));
 

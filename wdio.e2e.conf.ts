@@ -1,4 +1,7 @@
+import { resolve } from 'node:path'
+
 const embeddedPort = Number(process.env.TAURI_WEBDRIVER_PORT || 4445)
+const appBinaryPath = resolve('src-tauri/target/debug/md-html-reader')
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -8,7 +11,7 @@ export const config: WebdriverIO.Config = {
     [
       '@wdio/tauri-service',
       {
-        appBinaryPath: './src-tauri/target/debug/md-html-reader',
+        appBinaryPath,
         driverProvider: 'embedded',
         embeddedPort,
         startTimeout: 90000,
@@ -21,7 +24,7 @@ export const config: WebdriverIO.Config = {
     {
       browserName: 'tauri',
       'tauri:options': {
-        application: './src-tauri/target/debug/md-html-reader',
+        application: appBinaryPath,
       },
     },
   ],

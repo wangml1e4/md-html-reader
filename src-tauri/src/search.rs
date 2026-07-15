@@ -1,4 +1,5 @@
-use pulldown_cmark::{html, Options, Parser};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use pulldown_cmark::{html, Event, Options, Parser};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -180,65 +181,28 @@ pub fn export_as_html(
     file_path: String,
     output_path: String,
     css_content: Option<String>,
+    include_markdown_source: bool,
 ) -> Result<(), String> {
     let file_path = document_file_in_workspace(&workspace_path, &file_path)?;
     let output_path = output_file_in_workspace(&workspace_path, &output_path)?;
+    if output_path.exists() {
+        return Err("HTML 输出文件已存在，未覆盖原有文件".to_string());
+    }
     let markdown_content = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
 
-    // 用后端 Markdown 渲染结果填充导出模板。
-    let html = format!(
-        r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{}</title>
-    <style>
-        body {{
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 2rem;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            line-height: 1.6;
-        }}
-        pre {{
-            background: #f6f8fa;
-            padding: 1rem;
-            border-radius: 6px;
-            overflow-x: auto;
-        }}
-        code {{
-            background: #f6f8fa;
-            padding: 0.2rem 0.4rem;
-            border-radius: 3px;
-            font-family: monospace;
-        }}
-        table {{
-            border-collapse: collapse;
-            width: 100%;
-            margin: 1rem 0;
-        }}
-        th, td {{
-            border: 1px solid #ddd;
-            padding: 0.5rem;
-            text-align: left;
-        }}
-        th {{
-            background: #f6f8fa;
-        }}
-        {}
-    </style>
-</head>
-<body>
-    <div id="content">{}</div>
-</body>
-</html>"#,
-        file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Document"),
-        css_content.unwrap_or_default(),
+    let title = file_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Markdown 阅读版");
+    let document_html = format!(
+        r#"<article class="document-body">{}</article>"#,
         markdown_to_html(&markdown_content)
+    );
+    let html = reading_html_document(
+        title,
+        &document_html,
+        include_markdown_source.then_some(markdown_content.as_str()),
+        &css_content.unwrap_or_default(),
     );
 
     fs::write(&output_path, html).map_err(|e| e.to_string())?;
@@ -247,16 +211,188 @@ pub fn export_as_html(
 }
 
 /// 将 Markdown 内容渲染为 HTML。
-fn markdown_to_html(markdown: &str) -> String {
+pub(crate) fn markdown_to_html(markdown: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
 
-    let parser = Parser::new_ext(markdown, options);
+    // 阅读版只渲染 Markdown 语义，不把文档内嵌的原始 HTML 当成可执行页面内容。
+    let parser = Parser::new_ext(markdown, options).map(|event| match event {
+        Event::Html(value) | Event::InlineHtml(value) => Event::Text(value),
+        event => event,
+    });
     let mut output = String::new();
     html::push_html(&mut output, parser);
     output
+}
+
+pub(crate) fn reading_html_document(
+    title: &str,
+    reading_content: &str,
+    markdown_source: Option<&str>,
+    additional_styles: &str,
+) -> String {
+    let source_attributes = markdown_source.map_or_else(String::new, |source| {
+        format!(
+            r#" data-markdown-source="{}""#,
+            utf8_percent_encode(source, NON_ALPHANUMERIC)
+        )
+    });
+    let controls = markdown_source.map_or_else(String::new, |_| {
+        r#"<nav class="reader-controls" aria-label="阅读视图">
+        <button id="show-reading" class="is-active" type="button">阅读模式</button>
+        <button id="show-source" type="button">分屏查看</button>
+      </nav>"#
+            .to_string()
+    });
+    let source_panel = markdown_source.map_or_else(String::new, |_| {
+        r#"<aside class="source-pane" aria-label="Markdown 源文">
+        <h2>Markdown 源文</h2>
+        <pre id="markdown-source"></pre>
+      </aside>"#
+            .to_string()
+    });
+    let source_script = if markdown_source.is_some() {
+        r#"
+      const source = document.getElementById('markdown-source');
+      try {
+        source.textContent = decodeURIComponent(document.body.dataset.markdownSource || '');
+      } catch (_) {
+        source.textContent = 'Markdown 源文加载失败。';
+      }
+
+      const readingButton = document.getElementById('show-reading');
+      const sourceButton = document.getElementById('show-source');
+      const compactScreen = () => window.innerWidth <= 900;
+      const setView = (requestedView) => {
+        const view = requestedView === 'split' && compactScreen() ? 'source' : requestedView;
+        layout.dataset.view = view;
+        readingButton.classList.toggle('is-active', view === 'reading');
+        sourceButton.classList.toggle('is-active', view !== 'reading');
+        readingButton.textContent = compactScreen() ? '阅读内容' : '阅读模式';
+        sourceButton.textContent = compactScreen() ? 'Markdown' : '分屏查看';
+      };
+      readingButton.addEventListener('click', () => setView('reading'));
+      sourceButton.addEventListener('click', () => setView('split'));
+      window.addEventListener('resize', () => {
+        if (compactScreen() && layout.dataset.view === 'split') setView('source');
+        else if (!compactScreen() && layout.dataset.view === 'source') setView('split');
+        else setView(layout.dataset.view);
+      });
+      setView('reading');
+    "#
+    } else {
+        ""
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{}</title>
+  <style>
+    :root {{ color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }}
+    * {{ box-sizing: border-box; }}
+    html {{ scroll-behavior: smooth; }}
+    body {{ margin: 0; color: #1d1d1f; background: #f5f5f7; line-height: 1.8; }}
+    button {{ font: inherit; }}
+    .reader-header {{ display: flex; align-items: end; justify-content: space-between; gap: 24px; width: min(calc(100% - 48px), 1180px); margin: 0 auto; padding: 40px 0 24px; }}
+    .reader-header p {{ margin: 0 0 8px; color: #6e6e73; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }}
+    .reader-header h1 {{ margin: 0; font-size: clamp(28px, 5vw, 48px); letter-spacing: -.035em; line-height: 1.12; }}
+    .reader-controls {{ display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }}
+    .reader-controls button {{ border: 1px solid #d2d2d7; border-radius: 999px; padding: 8px 13px; color: #424245; background: #fff; cursor: pointer; }}
+    .reader-controls button.is-active {{ border-color: #0071e3; color: #fff; background: #0071e3; }}
+    .reader-layout {{ width: min(calc(100% - 48px), 780px); margin: 0 auto 72px; }}
+    .reader-layout[data-view="split"] {{ display: grid; grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); gap: 24px; width: min(calc(100% - 48px), 1440px); align-items: start; }}
+    .source-pane {{ display: none; position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow: auto; padding: 24px; border: 1px solid #d2d2d7; border-radius: 20px; background: #161617; color: #f5f5f7; box-shadow: 0 12px 32px rgba(0, 0, 0, .12); }}
+    .reader-layout[data-view="split"] .source-pane, .reader-layout[data-view="source"] .source-pane {{ display: block; }}
+    .source-pane h2 {{ margin: 0 0 16px; font-size: 15px; }}
+    .source-pane pre {{ margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 "SF Mono", Menlo, monospace; }}
+    .reading-content {{ min-width: 0; padding: 42px 48px; border: 1px solid rgba(0,0,0,.07); border-radius: 24px; background: rgba(255,255,255,.92); box-shadow: 0 16px 42px rgba(0,0,0,.07); }}
+    .document-outline {{ display: none; margin: 0 0 34px; padding: 18px 20px; border-radius: 14px; background: #f5f5f7; }}
+    .document-outline.is-visible {{ display: block; }}
+    .document-outline strong {{ display: block; margin-bottom: 8px; font-size: 14px; }}
+    .document-outline a {{ display: block; color: #0066cc; font-size: 14px; line-height: 1.7; text-decoration: none; }}
+    .document-outline a[data-level="3"] {{ padding-left: 14px; }}
+    .document-body > :first-child {{ margin-top: 0; }}
+    .document-body h1, .document-body h2, .document-body h3 {{ scroll-margin-top: 24px; line-height: 1.22; letter-spacing: -.025em; }}
+    .document-body h1 {{ margin-top: 1.6em; font-size: 34px; }}
+    .document-body h2 {{ margin-top: 1.8em; font-size: 26px; }}
+    .document-body h3 {{ margin-top: 1.6em; font-size: 20px; }}
+    .document-body p, .document-body li {{ font-size: 17px; }}
+    .document-body a {{ color: #0066cc; }}
+    .document-body img {{ display: block; max-width: 100%; height: auto; margin: 1.6em auto; border-radius: 14px; }}
+    .document-body pre {{ overflow-x: auto; padding: 18px; border-radius: 14px; background: #1d1d1f; color: #f5f5f7; }}
+    .document-body code {{ font-family: "SF Mono", Menlo, monospace; }}
+    .document-body :not(pre) > code {{ padding: 2px 6px; border-radius: 6px; background: #f0f2f5; }}
+    .document-body blockquote {{ margin: 1.5em 0; padding: 8px 20px; border-left: 4px solid #0071e3; border-radius: 0 12px 12px 0; color: #515154; background: #f3f8ff; }}
+    .document-body table {{ display: block; width: 100%; overflow-x: auto; border-collapse: collapse; }}
+    .document-body th, .document-body td {{ min-width: 120px; padding: 12px; border: 1px solid #d2d2d7; text-align: left; }}
+    .document-body th {{ background: #f5f5f7; }}
+    {}
+    @media (max-width: 900px) {{
+      .reader-header {{ align-items: start; flex-direction: column; width: min(calc(100% - 28px), 780px); padding: 28px 0 18px; }}
+      .reader-layout, .reader-layout[data-view="split"] {{ display: block; width: min(calc(100% - 28px), 780px); }}
+      .reader-layout[data-view="source"] .reading-content {{ display: none; }}
+      .reader-layout[data-view="source"] .source-pane {{ position: static; max-height: none; }}
+      .reading-content {{ padding: 30px 24px; border-radius: 18px; }}
+    }}
+  </style>
+</head>
+<body{}>
+  <header class="reader-header">
+    <div><p>Markdown 阅读版</p><h1>{}</h1></div>
+    {}
+  </header>
+  <main id="reader-layout" class="reader-layout" data-view="reading">
+    {}
+    <section class="reading-content"><nav id="document-outline" class="document-outline" aria-label="文章目录"></nav>{}</section>
+  </main>
+  <script>
+    (() => {{
+      const layout = document.getElementById('reader-layout');
+      const outline = document.getElementById('document-outline');
+      const headings = document.querySelectorAll('.document-body h2, .document-body h3');
+      if (headings.length) {{
+        const title = document.createElement('strong');
+        title.textContent = '文章目录';
+        outline.append(title);
+        headings.forEach((heading, index) => {{
+          if (!heading.id) heading.id = `section-${{index + 1}}`;
+          const link = document.createElement('a');
+          link.href = `#${{heading.id}}`;
+          link.textContent = heading.textContent || `第 ${{index + 1}} 节`;
+          link.dataset.level = heading.tagName === 'H3' ? '3' : '2';
+          outline.append(link);
+        }});
+        outline.classList.add('is-visible');
+      }};
+      {}
+    }})();
+  </script>
+</body>
+</html>"#,
+        escape_html(title),
+        additional_styles,
+        source_attributes,
+        escape_html(title),
+        controls,
+        source_panel,
+        reading_content,
+        source_script,
+    )
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn should_include_entry(path: &Path, workspace_root: &Path) -> bool {
@@ -385,18 +521,84 @@ mod tests {
         let outside_note = outside_note.to_string_lossy().to_string();
         let outside_output = outside_output.to_string_lossy().to_string();
 
-        export_as_html(workspace.clone(), note.clone(), output.clone(), None).unwrap();
+        export_as_html(workspace.clone(), note.clone(), output.clone(), None, false).unwrap();
         let exported = fs::read_to_string(output).unwrap();
         assert!(exported.contains("<h1>Note</h1>"));
         assert!(exported.contains("<li>item</li>"));
+        assert!(!exported.contains("data-markdown-source"));
+        assert!(!exported.contains("show-source"));
 
         assert!(export_as_html(
             workspace.clone(),
             outside_note,
             workspace.clone() + "/blocked.html",
-            None
+            None,
+            false,
         )
         .is_err());
-        assert!(export_as_html(workspace, note, outside_output, None).is_err());
+        assert!(export_as_html(workspace, note, outside_output, None, false).is_err());
+    }
+
+    #[test]
+    fn export_does_not_overwrite_existing_html() {
+        let workspace = unique_test_root("export-existing-workspace");
+        fs::create_dir_all(&workspace).unwrap();
+        let note = workspace.join("note.md");
+        let output = workspace.join("note.html");
+        fs::write(&note, "# Note").unwrap();
+        fs::write(&output, "existing html").unwrap();
+
+        let result = export_as_html(
+            workspace.to_string_lossy().to_string(),
+            note.to_string_lossy().to_string(),
+            output.to_string_lossy().to_string(),
+            None,
+            false,
+        );
+
+        assert_eq!(result.unwrap_err(), "HTML 输出文件已存在，未覆盖原有文件");
+        assert_eq!(fs::read_to_string(&output).unwrap(), "existing html");
+        fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn export_can_embed_markdown_for_safe_split_reading() {
+        let workspace = unique_test_root("export-split-reading");
+        fs::create_dir_all(&workspace).unwrap();
+        let note = workspace.join("note.md");
+        let output = workspace.join("note.html");
+        let markdown = "# Note\n\n## Guide\n\n![Hero](assets/hero.png)\n\n<script>window.pwned = true</script>";
+        fs::write(&note, markdown).unwrap();
+
+        export_as_html(
+            workspace.to_string_lossy().to_string(),
+            note.to_string_lossy().to_string(),
+            output.to_string_lossy().to_string(),
+            None,
+            true,
+        )
+        .unwrap();
+
+        let exported = fs::read_to_string(&output).unwrap();
+        assert!(exported.contains("data-view=\"reading\""));
+        assert!(exported.contains("data-markdown-source=\""));
+        assert!(exported.contains("show-source"));
+        assert!(exported.contains("document-outline"));
+        assert!(exported.contains("src=\"assets/hero.png\""));
+        assert!(exported.contains("&lt;script&gt;window.pwned = true&lt;/script&gt;"));
+        assert!(!exported.contains("<script>window.pwned = true</script>"));
+
+        let encoded = exported
+            .split("data-markdown-source=\"")
+            .nth(1)
+            .and_then(|value| value.split('\"').next())
+            .unwrap();
+        assert_eq!(
+            percent_encoding::percent_decode_str(encoded)
+                .decode_utf8()
+                .unwrap(),
+            markdown
+        );
+        fs::remove_dir_all(workspace).unwrap();
     }
 }
