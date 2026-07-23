@@ -23,7 +23,7 @@ describe('TranslationCard', () => {
     expect(wrapper.text()).toContain('你好')
     expect(wrapper.text()).toContain('Ollama')
 
-    await wrapper.findAll('button').find(button => button.text() === '复制译文')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'Copy translation')!.trigger('click')
 
     expect(writeText).toHaveBeenCalledWith('你好')
   })
@@ -39,7 +39,7 @@ describe('TranslationCard', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('翻译中')
+    expect(wrapper.text()).toContain('Translating...')
 
     await wrapper.setProps({
       state: 'error',
@@ -60,6 +60,6 @@ describe('TranslationCard', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('OpenAI 兼容')
+    expect(wrapper.text()).toContain('OpenAI-compatible')
   })
 })

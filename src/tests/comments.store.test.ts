@@ -203,7 +203,7 @@ describe('comments store', () => {
         anchor: { quote: 'test', offset: 0, length: 4 },
         content: 'New comment',
         status: 'open',
-      })).rejects.toThrow('未加载评论文件')
+      })).rejects.toThrow('No comment file is loaded')
       expect(invoke).not.toHaveBeenCalled()
     })
   })

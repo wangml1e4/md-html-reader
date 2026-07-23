@@ -64,15 +64,19 @@ async function selectEditorText(text: string) {
   }, text)
 
   expect(selected).toBe(true)
-  await waitForBodyText('添加评论')
+  await waitForBodyText('Add comment')
 }
 
 async function openE2EWorkspaceAndNote() {
-  await buttonWithText('打开文件夹').click()
+  await buttonWithText('Open folder').click()
   await waitForBodyText('note.md')
 
   await buttonContaining('note.md').click()
   await waitForBodyText('Original keyword')
+}
+
+async function openDocumentTools() {
+  await $('//summary[normalize-space(.)="Document tools"]').click()
 }
 
 async function waitForPreviewWindow(mainWindow: string) {
@@ -112,7 +116,7 @@ describe('MD+HTML Reader Tauri window', () => {
   it('loads the real Tauri webview and exposes the WDIO Tauri bridge', async () => {
     await browser.pause(500)
 
-    await expect($('h1')).toHaveText('Markdown HTML Editor')
+    await expect($('h1')).toHaveText('MD+HTML Reader')
 
     const hasBridge = await browser.execute(() => 'wdioTauri' in window)
     expect(hasBridge).toBe(true)
@@ -125,30 +129,31 @@ describe('MD+HTML Reader Tauri window', () => {
     await openE2EWorkspaceAndNote()
 
     await setEditorContent('# Manual E2E Note\n\nEdited keyword for validation.\n\nSecond paragraph for comment target.')
-    await buttonContaining('保存').click()
-    await waitForBodyText('刚刚保存')
+    await buttonContaining('Save').click()
+    await waitForBodyText('Saved just now')
     expect(readFileSync(notePath, 'utf8')).toContain('Edited keyword')
 
     await selectEditorText('Second paragraph')
-    await buttonContaining('添加评论').click()
-    await $('textarea[placeholder="输入评论内容..."]').setValue('Review note')
-    await buttonWithText('提交').click()
+    await buttonContaining('Add comment').click()
+    await $('textarea[placeholder="Write a comment..."]').setValue('Review note')
+    await buttonWithText('Submit').click()
     await waitForBodyText('Review note')
     expect(existsSync(join(workspacePath, '.comments'))).toBe(true)
 
     await browser.refresh()
-    await waitForBodyText('Markdown HTML Editor')
-    await buttonWithText('打开文件夹').click()
+    await waitForBodyText('MD+HTML Reader')
+    await buttonWithText('Open folder').click()
     await waitForBodyText('note.md')
     await buttonContaining('note.md').click()
     await waitForBodyText('Review note')
 
-    await buttonWithText('搜索文件').click()
-    await $('input[placeholder="搜索文件名... (输入文件名)"]').setValue('note')
+    await openDocumentTools()
+    await buttonWithText('Find files').click()
+    await $('input[placeholder="Find a file..."]').setValue('note')
     await waitForBodyText('markdown-html-e2e-workspace')
     await browser.keys('Escape')
 
-    await buttonWithText('搜索内容').click()
+    await buttonWithText('Search content').click()
     const directContentResults = await browser.execute(async (rootPath) => {
       return await (window as any).__TAURI__.core.invoke('search_content', {
         workspacePath: rootPath,
@@ -158,12 +163,12 @@ describe('MD+HTML Reader Tauri window', () => {
     }, workspacePath)
     expect(directContentResults).toHaveLength(1)
 
-    await $('input[placeholder="搜索文件内容... (输入关键词)"]').setValue('Edited')
-    await waitForBodyText('第 3 行')
+    await $('input[placeholder="Search workspace content..."]').setValue('Edited')
+    await waitForBodyText('Line 3')
     await buttonContaining('note.md').click()
 
-    await buttonWithText('生成 HTML').click()
-    await waitForBodyText('已生成并打开 HTML 阅读版')
+    await buttonWithText('Export HTML').click()
+    await waitForBodyText('HTML reading version created and opened')
     const exported = readFileSync(exportPath, 'utf8')
     expect(exported).toContain('Edited keyword')
     expect(exported).toContain('document-outline')
@@ -172,9 +177,10 @@ describe('MD+HTML Reader Tauri window', () => {
 
   it('exports an optional Markdown source panel that defaults to reading mode', async () => {
     await openE2EWorkspaceAndNote()
-    await $('[aria-label="嵌入原 Markdown（支持分屏）"]').click()
-    await buttonWithText('生成 HTML').click()
-    await waitForBodyText('已生成并打开 HTML 阅读版')
+    await openDocumentTools()
+    await $('[aria-label="Include source Markdown"]').click()
+    await buttonWithText('Export HTML').click()
+    await waitForBodyText('HTML reading version created and opened')
 
     const exported = readFileSync(exportPath, 'utf8')
     expect(exported).toContain('data-markdown-source')
@@ -182,13 +188,13 @@ describe('MD+HTML Reader Tauri window', () => {
     expect(exported).toContain('data-view="reading"')
 
     const mainWindow = await browser.getWindowHandle()
-    await buttonWithText('打开完整预览').click()
+    await buttonWithText('Open full preview').click()
     const previewWindow = await waitForPreviewWindow(mainWindow)
 
     try {
       await browser.switchToWindow(previewWindow)
       await expect($('#reader-layout')).toHaveAttribute('data-view', 'reading')
-      await expect($('#show-source')).toHaveText('分屏查看')
+      await expect($('#show-source')).toHaveText('Split view')
 
       await browser.execute(() => document.getElementById('show-source')?.click())
       await expect($('#reader-layout')).toHaveAttribute('data-view', 'split')
@@ -214,7 +220,7 @@ describe('MD+HTML Reader Tauri window', () => {
   })
 
   it('uses runtime asset scope to render local CSS, module scripts, images, and author base in an isolated preview window', async () => {
-    await buttonWithText('打开文件夹').click()
+    await buttonWithText('Open folder').click()
     await waitForBodyText('preview.html')
     const previewFileButton = buttonContaining('preview.html')
     const previewFilePath = await previewFileButton.getAttribute('data-file-path')
@@ -227,7 +233,7 @@ describe('MD+HTML Reader Tauri window', () => {
 
     await previewFileButton.click()
     const mainWindow = await browser.getWindowHandle()
-    await buttonWithText('打开完整预览').click()
+    await buttonWithText('Open full preview').click()
     const previewWindow = await waitForPreviewWindow(mainWindow)
 
     try {
@@ -274,7 +280,7 @@ describe('MD+HTML Reader Tauri window', () => {
   })
 
   it('protects unsaved content during file and workspace switches', async () => {
-    await buttonWithText('打开文件夹').click()
+    await buttonWithText('Open folder').click()
     await waitForBodyText('second.md')
     await buttonContaining('second.md').click()
     await waitForBodyText('Second file content')
@@ -293,22 +299,22 @@ describe('MD+HTML Reader Tauri window', () => {
     const confirmMessages = await browser.execute(() => (window as any).__confirmMessages)
 
     expect(confirmMessages).toHaveLength(1)
-    expect(confirmMessages[0]).toContain('当前文件有未保存的更改')
+    expect(confirmMessages[0]).toContain('This file has unsaved changes')
     await waitForBodyText('Unsaved draft')
     expect(await $('body').getText()).not.toContain('Second file content')
     expect(readFileSync(notePath, 'utf8')).toContain('Original keyword')
 
-    await buttonWithText('打开文件夹').click()
+    await buttonWithText('Open folder').click()
     const workspaceCancelMessages = await browser.execute(() => (window as any).__confirmMessages)
     expect(workspaceCancelMessages).toHaveLength(2)
-    expect(workspaceCancelMessages[1]).toContain('切换工作区会丢失这些更改')
+    expect(workspaceCancelMessages[1]).toContain('Switching workspaces will discard them')
     await waitForBodyText('Unsaved draft')
 
     await browser.execute(() => {
       window.confirm = () => true
     })
-    await buttonWithText('打开文件夹').click()
-    await waitForBodyText('点击"打开文件夹"开始编辑')
+    await buttonWithText('Open folder').click()
+    await waitForBodyText('Choose a document to begin')
     expect(await $('body').getText()).not.toContain('Unsaved draft')
     expect(readFileSync(notePath, 'utf8')).toContain('Original keyword')
   })

@@ -27,7 +27,7 @@ describe('CommentTooltip', () => {
     await wrapper.find('button').trigger('click')
     await wrapper.setProps({ selection: null })
     await wrapper.find('textarea').setValue('Manual acceptance comment')
-    await wrapper.findAll('button').find(button => button.text() === '提交')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'Submit')!.trigger('click')
 
     expect(wrapper.emitted('addComment')).toEqual([
       ['Manual acceptance comment', selection],
@@ -54,7 +54,7 @@ describe('CommentTooltip', () => {
       },
     })
 
-    await wrapper.findAll('button').find(button => button.text() === '翻译')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'Translate')!.trigger('click')
 
     expect(wrapper.emitted('translate')).toEqual([[selection]])
   })

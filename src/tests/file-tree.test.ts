@@ -30,6 +30,12 @@ const files: FileItem[] = [
         extension: '.xhtml',
         title: 'XHTML Title',
       },
+      {
+        name: 'config.yaml',
+        path: '/tmp/workspace/docs/config.yaml',
+        type: 'file',
+        extension: '.yaml',
+      },
     ],
   },
 ]
@@ -55,6 +61,20 @@ describe('FileTree', () => {
     expect(wrapper.text()).not.toContain('note.md')
     expect(wrapper.text()).toContain('page.html')
     expect(wrapper.text()).toContain('legacy.xhtml')
+    expect(wrapper.text()).not.toContain('config.yaml')
+  })
+
+  it('在全部文件中显示 YAML 文件', async () => {
+    const wrapper = mount(FileTree, {
+      props: {
+        files,
+        filter: 'all',
+      },
+    })
+
+    await wrapper.find('button').trigger('click')
+
+    expect(wrapper.text()).toContain('config.yaml')
   })
 
   it('显示标题时使用标题并保留文件名兜底', async () => {

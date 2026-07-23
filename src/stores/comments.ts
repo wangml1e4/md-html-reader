@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { relocateAnchor } from '../utils/comment-anchor'
+import { t } from '../i18n'
 
 export interface Comment {
   id: string
@@ -50,7 +51,7 @@ export const useCommentsStore = defineStore('comments', () => {
         ? relocateComments(comments, currentContent)
         : [...comments]
     } catch (error) {
-      console.error('加载评论失败:', error)
+      console.error('Failed to load comments:', error)
       clearCurrentFile()
     }
   }
@@ -87,7 +88,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
   async function saveComment(comment: Omit<Comment, 'id' | 'createdAt' | 'updatedAt'>) {
     if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
-      throw new Error('未加载评论文件')
+      throw new Error(t('noCommentFileLoaded'))
     }
 
     try {
@@ -108,14 +109,14 @@ export const useCommentsStore = defineStore('comments', () => {
       list.value.push(newComment)
       return newComment
     } catch (error) {
-      console.error('保存评论失败:', error)
+      console.error('Failed to save comment:', error)
       throw error
     }
   }
 
   async function deleteComment(commentId: string) {
     if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
-      throw new Error('未加载评论文件')
+      throw new Error(t('noCommentFileLoaded'))
     }
 
     try {
@@ -128,7 +129,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
       list.value = list.value.filter(c => c.id !== commentId)
     } catch (error) {
-      console.error('删除评论失败:', error)
+      console.error('Failed to delete comment:', error)
       throw error
     }
   }
@@ -138,7 +139,7 @@ export const useCommentsStore = defineStore('comments', () => {
     if (!comment) return
 
     if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
-      throw new Error('未加载评论文件')
+      throw new Error(t('noCommentFileLoaded'))
     }
 
     const updatedComment: Comment = {
@@ -156,7 +157,7 @@ export const useCommentsStore = defineStore('comments', () => {
       })
       Object.assign(comment, updatedComment)
     } catch (error) {
-      console.error('更新评论失败:', error)
+      console.error('Failed to update comment:', error)
       throw error
     }
   }

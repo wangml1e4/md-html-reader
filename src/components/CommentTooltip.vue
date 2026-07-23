@@ -14,25 +14,24 @@
           class="px-3 py-1.5 bg-blue-500 text-white rounded shadow-lg hover:bg-blue-600 text-sm flex items-center gap-1"
         >
           <span>💬</span>
-          <span>添加评论</span>
+          <span>{{ t('addComment') }}</span>
         </button>
         <button
           @click="handleTranslate"
           class="px-3 py-1.5 bg-gray-900 text-white rounded shadow-lg hover:bg-gray-700 text-sm flex items-center gap-1"
         >
-          <span>翻译</span>
+          <span>{{ t('translate') }}</span>
         </button>
       </div>
     </div>
 
-    <!-- 评论输入对话框 -->
     <div
       v-if="showDialog"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       @click.self="closeDialog"
     >
       <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
-        <h3 class="text-lg font-semibold mb-4">添加评论</h3>
+        <h3 class="text-lg font-semibold mb-4">{{ t('addComment') }}</h3>
 
         <div class="mb-4 p-3 bg-gray-50 rounded text-sm text-gray-600 italic border-l-4 border-blue-500">
           "{{ selectedText }}"
@@ -40,7 +39,7 @@
 
         <textarea
           v-model="commentContent"
-          placeholder="输入评论内容..."
+          :placeholder="t('writeComment')"
           class="w-full h-32 p-3 border border-gray-300 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
           ref="textareaRef"
         />
@@ -50,14 +49,14 @@
             @click="closeDialog"
             class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded text-sm"
           >
-            取消
+            {{ t('cancel') }}
           </button>
           <button
             @click="submitComment"
             :disabled="!commentContent.trim()"
             class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            提交
+            {{ t('submit') }}
           </button>
         </div>
       </div>
@@ -68,6 +67,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { Selection } from '../utils/selection'
+import { t } from '../i18n'
 
 const props = defineProps<{
   show: boolean

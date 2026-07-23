@@ -7,7 +7,7 @@
       </span>
 
       <div class="flex gap-2 items-center">
-        <span v-if="isSaving" class="text-xs text-gray-400">保存中...</span>
+        <span v-if="isSaving" class="text-xs text-gray-400">{{ t('saving') }}</span>
         <span v-else-if="saveError" class="text-xs text-red-500">
           {{ saveError }}
         </span>
@@ -20,7 +20,7 @@
           class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
           :disabled="isSaving"
         >
-          保存 (⌘S)
+          {{ t('save') }}
         </button>
       </div>
     </div>
@@ -58,6 +58,7 @@ import { ask } from '@tauri-apps/plugin-dialog'
 import CommentTooltip from './CommentTooltip.vue'
 import { onSelectionChange, type Selection } from '../utils/selection'
 import { createAnchor } from '../utils/comment-anchor'
+import { t } from '../i18n'
 
 const props = defineProps<{
   file: { path: string; content: string }
@@ -93,9 +94,9 @@ const fileName = computed(() => {
 const lastSavedText = computed(() => {
   if (!lastSaved.value) return ''
   const seconds = Math.floor((Date.now() - lastSaved.value) / 1000)
-  if (seconds < 5) return '刚刚保存'
-  if (seconds < 60) return `${seconds}秒前保存`
-  return `${Math.floor(seconds / 60)}分钟前保存`
+  if (seconds < 5) return t('savedJustNow')
+  if (seconds < 60) return t('savedSecondsAgo', { count: seconds })
+  return t('savedMinutesAgo', { count: Math.floor(seconds / 60) })
 })
 
 // 初始化 Milkdown 编辑器
@@ -127,7 +128,7 @@ onMounted(async () => {
     setupE2EHelpers()
 
   } catch (error) {
-    console.error('初始化编辑器失败:', error)
+    console.error('Failed to initialize editor:', error)
   }
 })
 
@@ -216,9 +217,9 @@ async function requestDiscardChanges(action: DiscardAction) {
   if (currentContent.value === props.file.content) return true
 
   const messages: Record<DiscardAction, string> = {
-    'switch-file': '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？',
-    'switch-workspace': '当前文件有未保存的更改，切换工作区会丢失这些更改。是否继续？',
-    'close-window': '当前文件有未保存的更改，关闭应用会丢失这些更改。是否继续？',
+    'switch-file': t('discardFile'),
+    'switch-workspace': t('discardWorkspace'),
+    'close-window': t('discardWindow'),
   }
   const hadPendingAutoSave = autoSaveTimer.value !== null
   if (autoSaveTimer.value) {
@@ -227,7 +228,7 @@ async function requestDiscardChanges(action: DiscardAction) {
   }
   const shouldDiscard = isE2E
     ? confirm(messages[action])
-    : await ask(messages[action], { title: '未保存的更改', kind: 'warning' })
+    : await ask(messages[action], { title: t('unsavedChanges'), kind: 'warning' })
 
   if (!shouldDiscard && hadPendingAutoSave) scheduleAutoSave()
 
@@ -289,11 +290,11 @@ async function replaceContent(content: string) {
   }
   if (activeSave) await activeSave
 
-  if (!editor.value) throw new Error('编辑器尚未就绪，无法应用优化稿')
+  if (!editor.value) throw new Error(t('aiDraftApplyError'))
 
   editor.value.action(ctx => {
     const document = ctx.get(parserCtx)(content)
-    if (!document) throw new Error('无法加载优化后的 Markdown')
+    if (!document) throw new Error(t('couldNotLoadMarkdown'))
 
     const view = ctx.get(editorViewCtx)
     view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, document.content))
@@ -314,8 +315,8 @@ function save(): Promise<void> {
       lastSaved.value = Date.now()
     })
     .catch((error) => {
-      console.error('保存失败:', error)
-      saveError.value = '保存失败'
+      console.error('Save failed:', error)
+      saveError.value = t('saveFailed')
       throw error
     })
     .finally(() => {

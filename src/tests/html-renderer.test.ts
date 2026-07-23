@@ -70,10 +70,10 @@ describe('HtmlRenderer', () => {
       expect.stringMatching(/^html-preview-\d+-0$/),
       expect.objectContaining({
         url: 'preview://localhost/tmp/workspace/page.html',
-        title: 'HTML 预览：page.html',
+        title: 'HTML preview: page.html',
       })
     )
-    expect(wrapper.text()).not.toContain('完整预览打开失败')
+    expect(wrapper.text()).not.toContain('Could not open full preview')
   })
 
   it('安全静态预览保留原文但禁用脚本和同源权限', async () => {
@@ -86,7 +86,7 @@ describe('HtmlRenderer', () => {
 
     await wrapper.get('button:nth-of-type(2)').trigger('click')
 
-    const iframe = wrapper.get('iframe[title="HTML 安全静态预览"]')
+    const iframe = wrapper.get('iframe[title="Safe HTML static preview"]')
     expect(iframe.attributes('sandbox')).toBe('')
     expect(iframe.attributes('srcdoc')).toBe(content)
     expect(iframe.attributes('sandbox')).not.toContain('allow-scripts')
@@ -121,6 +121,6 @@ describe('HtmlRenderer', () => {
     await wrapper.get('button:nth-of-type(2)').trigger('click')
     await wrapper.get('iframe').trigger('error')
 
-    expect(wrapper.get('[role="alert"]').text()).toContain('安全静态预览加载失败')
+    expect(wrapper.get('[role="alert"]').text()).toContain('Could not load the safe static preview')
   })
 })

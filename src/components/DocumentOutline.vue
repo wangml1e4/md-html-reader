@@ -1,11 +1,11 @@
 <template>
   <div class="h-full overflow-auto bg-white border-r border-gray-200">
     <div class="px-3 py-2 border-b border-gray-200 text-sm font-medium text-gray-700">
-      标题大纲
+      {{ t('outline') }}
     </div>
 
     <div v-if="headings.length === 0" class="p-3 text-xs text-gray-400">
-      当前文档没有标题
+      {{ t('noHeadings') }}
     </div>
 
     <div v-else class="p-2 space-y-1">
@@ -25,6 +25,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '../i18n'
 
 export interface OutlineHeading {
   level: number

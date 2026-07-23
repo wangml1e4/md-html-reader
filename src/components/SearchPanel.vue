@@ -1,5 +1,4 @@
 <template>
-  <!-- 文件名搜索 (Cmd+P) -->
   <Teleport to="body">
     <div
       v-if="show && mode === 'files'"
@@ -15,7 +14,7 @@
               ref="inputRef"
               v-model="query"
               type="text"
-              placeholder="搜索文件名... (输入文件名)"
+              :placeholder="t('findFilePlaceholder')"
               class="flex-1 text-sm outline-none"
               @keydown.down.prevent="selectNext"
               @keydown.up.prevent="selectPrev"
@@ -58,22 +57,19 @@
             </div>
           </div>
 
-          <!-- 空状态 -->
           <div v-if="query && fileResults.length === 0" class="py-12 text-center text-gray-400">
             <div class="text-3xl mb-2">📄</div>
-            <div class="text-sm">未找到匹配的文件</div>
+            <div class="text-sm">{{ t('noMatchingFiles') }}</div>
           </div>
 
-          <!-- 提示 -->
           <div v-if="!query" class="py-12 text-center text-gray-400">
-            <div class="text-sm">输入文件名开始搜索</div>
-            <div class="text-xs mt-1">支持模糊匹配</div>
+            <div class="text-sm">{{ t('typeFileName') }}</div>
+            <div class="text-xs mt-1">{{ t('fuzzyMatching') }}</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 内容搜索 (Cmd+Shift+F) -->
     <div
       v-if="show && mode === 'content'"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center pt-24 z-50"
@@ -88,14 +84,14 @@
               ref="inputRef"
               v-model="query"
               type="text"
-              placeholder="搜索文件内容... (输入关键词)"
+              :placeholder="t('searchContentPlaceholder')"
               class="flex-1 text-sm outline-none"
               @keydown.down.prevent="selectNext"
               @keydown.up.prevent="selectPrev"
               @keydown.enter.prevent="openSelected"
               @keydown.esc="close"
             />
-            <span v-if="isSearching" class="text-xs text-gray-400">搜索中...</span>
+            <span v-if="isSearching" class="text-xs text-gray-400">{{ t('searching') }}</span>
             <kbd class="text-xs text-gray-400 px-2 py-1 bg-gray-100 rounded">ESC</kbd>
           </div>
         </div>
@@ -120,7 +116,7 @@
                   <span class="text-sm font-medium text-gray-800 truncate">
                     {{ result.file_name }}
                   </span>
-                  <span class="text-xs text-gray-400">第 {{ result.line_number }} 行</span>
+                  <span class="text-xs text-gray-400">{{ t('line', { count: result.line_number }) }}</span>
                 </div>
                 <div class="text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded">
                   <template
@@ -135,16 +131,14 @@
             </div>
           </div>
 
-          <!-- 空状态 -->
           <div v-if="query && contentResults.length === 0 && !isSearching" class="py-12 text-center text-gray-400">
             <div class="text-3xl mb-2">📄</div>
-            <div class="text-sm">未找到匹配的内容</div>
+            <div class="text-sm">{{ t('noMatchingContent') }}</div>
           </div>
 
-          <!-- 提示 -->
           <div v-if="!query" class="py-12 text-center text-gray-400">
-            <div class="text-sm">输入关键词搜索文件内容</div>
-            <div class="text-xs mt-1">将在所有 Markdown、.html、.htm 与 .xhtml 文件中搜索</div>
+            <div class="text-sm">{{ t('typeKeyword') }}</div>
+            <div class="text-xs mt-1">{{ t('searchFormats') }}</div>
           </div>
         </div>
       </div>
@@ -155,6 +149,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { t } from '../i18n'
 
 type SearchMode = 'files' | 'content'
 
@@ -183,7 +178,6 @@ interface HighlightSegment {
   highlight: boolean
 }
 
-// 监听显示状态，自动聚焦
 watch(() => props.show, (show) => {
   if (show) {
     query.value = ''
@@ -196,7 +190,6 @@ watch(() => props.show, (show) => {
   }
 })
 
-// 监听查询变化，执行防抖搜索
 watch(query, (newQuery) => {
   if (!newQuery || !props.workspacePath) {
     fileResults.value = []
@@ -206,7 +199,6 @@ watch(query, (newQuery) => {
 
   selectedIndex.value = 0
 
-  // 清除之前的定时器
   if (debounceTimer) {
     clearTimeout(debounceTimer)
   }
@@ -229,7 +221,7 @@ async function searchFiles(q: string) {
     })
     fileResults.value = results as any[]
   } catch (error) {
-    console.error('文件搜索失败:', error)
+    console.error('File search failed:', error)
   }
 }
 
@@ -243,7 +235,7 @@ async function searchContent(q: string) {
     })
     contentResults.value = results as any[]
   } catch (error) {
-    console.error('内容搜索失败:', error)
+    console.error('Content search failed:', error)
   } finally {
     isSearching.value = false
   }

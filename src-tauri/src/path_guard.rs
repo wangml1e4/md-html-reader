@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-const SUPPORTED_DOCUMENT_EXTENSIONS: [&str; 4] = ["md", "html", "htm", "xhtml"];
+const SUPPORTED_DOCUMENT_EXTENSIONS: [&str; 5] = ["md", "html", "htm", "xhtml", "yaml"];
 
 pub fn workspace_root(workspace_path: &str) -> Result<PathBuf, String> {
     let root = fs::canonicalize(workspace_path).map_err(|e| format!("工作区路径无效: {}", e))?;
@@ -104,7 +104,7 @@ fn ensure_supported_document(path: &Path) -> Result<(), String> {
     if is_supported_document_path(path) {
         Ok(())
     } else {
-        Err("只允许访问 Markdown 或 HTML 文件".to_string())
+        Err("只允许访问 Markdown、HTML 或 YAML 文件".to_string())
     }
 }
 
@@ -144,6 +144,7 @@ mod tests {
         fs::write(workspace.join("plain.txt"), "plain").unwrap();
         fs::write(workspace.join("page.htm"), "<h1>HTM</h1>").unwrap();
         fs::write(workspace.join("page.xhtml"), "<h1>XHTML</h1>").unwrap();
+        fs::write(workspace.join("config.yaml"), "enabled: true").unwrap();
         fs::write(outside.join("secret.md"), "secret").unwrap();
 
         let workspace = workspace.to_string_lossy().to_string();
@@ -159,6 +160,9 @@ mod tests {
         assert!(document_file_in_workspace(&workspace, &(workspace.clone() + "/page.htm")).is_ok());
         assert!(
             document_file_in_workspace(&workspace, &(workspace.clone() + "/page.xhtml")).is_ok()
+        );
+        assert!(
+            document_file_in_workspace(&workspace, &(workspace.clone() + "/config.yaml")).is_ok()
         );
     }
 }

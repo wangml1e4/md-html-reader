@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { t } from '../i18n'
 
 export interface FileItem {
   name: string
@@ -24,7 +25,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       currentFile.value = null
       return true
     } catch (error) {
-      console.error('加载文件夹失败:', error)
+      console.error('Failed to load folder:', error)
       return false
     }
   }
@@ -40,14 +41,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       currentFile.value = { path, content }
       return true
     } catch (error) {
-      console.error('打开文件失败:', error)
+      console.error('Failed to open file:', error)
       return false
     }
   }
 
   async function saveCurrentFile(content: string) {
     if (!currentFile.value) return
-    if (!folderPath.value) throw new Error('未加载工作区')
+    if (!folderPath.value) throw new Error(t('noWorkspaceOpen'))
 
     const workspacePath = folderPath.value
     const targetFile = currentFile.value
@@ -63,7 +64,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         currentFile.value.content = content
       }
     } catch (error) {
-      console.error('保存文件失败:', error)
+      console.error('Failed to save file:', error)
       throw error
     }
   }

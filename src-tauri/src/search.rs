@@ -186,14 +186,16 @@ pub fn export_as_html(
     let file_path = document_file_in_workspace(&workspace_path, &file_path)?;
     let output_path = output_file_in_workspace(&workspace_path, &output_path)?;
     if output_path.exists() {
-        return Err("HTML 输出文件已存在，未覆盖原有文件".to_string());
+        return Err(
+            "An HTML export already exists; the existing file was not overwritten".to_string(),
+        );
     }
     let markdown_content = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
 
     let title = file_path
         .file_stem()
         .and_then(|name| name.to_str())
-        .unwrap_or("Markdown 阅读版");
+        .unwrap_or("Markdown Reading Version");
     let document_html = format!(
         r#"<article class="document-body">{}</article>"#,
         markdown_to_html(&markdown_content)
@@ -240,15 +242,15 @@ pub(crate) fn reading_html_document(
         )
     });
     let controls = markdown_source.map_or_else(String::new, |_| {
-        r#"<nav class="reader-controls" aria-label="阅读视图">
-        <button id="show-reading" class="is-active" type="button">阅读模式</button>
-        <button id="show-source" type="button">分屏查看</button>
+        r#"<nav class="reader-controls" aria-label="Reading view">
+        <button id="show-reading" class="is-active" type="button">Reading mode</button>
+        <button id="show-source" type="button">Split view</button>
       </nav>"#
             .to_string()
     });
     let source_panel = markdown_source.map_or_else(String::new, |_| {
-        r#"<aside class="source-pane" aria-label="Markdown 源文">
-        <h2>Markdown 源文</h2>
+        r#"<aside class="source-pane" aria-label="Markdown source">
+        <h2>Markdown source</h2>
         <pre id="markdown-source"></pre>
       </aside>"#
             .to_string()
@@ -259,7 +261,7 @@ pub(crate) fn reading_html_document(
       try {
         source.textContent = decodeURIComponent(document.body.dataset.markdownSource || '');
       } catch (_) {
-        source.textContent = 'Markdown 源文加载失败。';
+        source.textContent = 'Could not load the Markdown source.';
       }
 
       const readingButton = document.getElementById('show-reading');
@@ -270,8 +272,8 @@ pub(crate) fn reading_html_document(
         layout.dataset.view = view;
         readingButton.classList.toggle('is-active', view === 'reading');
         sourceButton.classList.toggle('is-active', view !== 'reading');
-        readingButton.textContent = compactScreen() ? '阅读内容' : '阅读模式';
-        sourceButton.textContent = compactScreen() ? 'Markdown' : '分屏查看';
+        readingButton.textContent = compactScreen() ? 'Reading' : 'Reading mode';
+        sourceButton.textContent = compactScreen() ? 'Markdown' : 'Split view';
       };
       readingButton.addEventListener('click', () => setView('reading'));
       sourceButton.addEventListener('click', () => setView('split'));
@@ -288,7 +290,7 @@ pub(crate) fn reading_html_document(
 
     format!(
         r#"<!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -344,12 +346,12 @@ pub(crate) fn reading_html_document(
 </head>
 <body{}>
   <header class="reader-header">
-    <div><p>Markdown 阅读版</p><h1>{}</h1></div>
+    <div><p>Markdown Reading Version</p><h1>{}</h1></div>
     {}
   </header>
   <main id="reader-layout" class="reader-layout" data-view="reading">
     {}
-    <section class="reading-content"><nav id="document-outline" class="document-outline" aria-label="文章目录"></nav>{}</section>
+    <section class="reading-content"><nav id="document-outline" class="document-outline" aria-label="Document outline"></nav>{}</section>
   </main>
   <script>
     (() => {{
@@ -358,13 +360,13 @@ pub(crate) fn reading_html_document(
       const headings = document.querySelectorAll('.document-body h2, .document-body h3');
       if (headings.length) {{
         const title = document.createElement('strong');
-        title.textContent = '文章目录';
+        title.textContent = 'Document outline';
         outline.append(title);
         headings.forEach((heading, index) => {{
           if (!heading.id) heading.id = `section-${{index + 1}}`;
           const link = document.createElement('a');
           link.href = `#${{heading.id}}`;
-          link.textContent = heading.textContent || `第 ${{index + 1}} 节`;
+          link.textContent = heading.textContent || `Section ${{index + 1}}`;
           link.dataset.level = heading.tagName === 'H3' ? '3' : '2';
           outline.append(link);
         }});
@@ -527,6 +529,8 @@ mod tests {
         assert!(exported.contains("<li>item</li>"));
         assert!(!exported.contains("data-markdown-source"));
         assert!(!exported.contains("show-source"));
+        assert!(exported.contains("<html>"));
+        assert!(!exported.contains("<html lang=\"en\">"));
 
         assert!(export_as_html(
             workspace.clone(),
@@ -556,7 +560,10 @@ mod tests {
             false,
         );
 
-        assert_eq!(result.unwrap_err(), "HTML 输出文件已存在，未覆盖原有文件");
+        assert_eq!(
+            result.unwrap_err(),
+            "An HTML export already exists; the existing file was not overwritten"
+        );
         assert_eq!(fs::read_to_string(&output).unwrap(), "existing html");
         fs::remove_dir_all(workspace).unwrap();
     }

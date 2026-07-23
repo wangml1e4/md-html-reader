@@ -61,11 +61,11 @@ async function selectEditorText(text: string) {
   }, text)
 
   expect(selected).toBe(true)
-  await waitForBodyText('添加评论')
+  await waitForBodyText('Add comment')
 }
 
 async function openE2EWorkspaceAndNote(expectedText: string) {
-  await buttonWithText('打开文件夹').click()
+  await buttonWithText('Open folder').click()
   await waitForBodyText('note.md')
 
   await buttonContaining('note.md').click()
@@ -93,14 +93,14 @@ describe('MD+HTML Reader app restart persistence', () => {
     if (phase === 'create') {
       await openE2EWorkspaceAndNote('Original restart text')
       await setEditorContent('# Restart E2E Note\n\nEdited after app restart.\n\nRestart comment target.')
-      await buttonContaining('保存').click()
-      await waitForBodyText('刚刚保存')
+      await buttonContaining('Save').click()
+      await waitForBodyText('Saved just now')
       expect(readFileSync(notePath, 'utf8')).toContain('Edited after app restart')
 
       await selectEditorText('Restart comment target')
-      await buttonContaining('添加评论').click()
-      await $('textarea[placeholder="输入评论内容..."]').setValue('Reopen review note')
-      await buttonWithText('提交').click()
+      await buttonContaining('Add comment').click()
+      await $('textarea[placeholder="Write a comment..."]').setValue('Reopen review note')
+      await buttonWithText('Submit').click()
       await waitForBodyText('Reopen review note')
       expect(existsSync(join(workspacePath, '.comments'))).toBe(true)
       return

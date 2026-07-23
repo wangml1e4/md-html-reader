@@ -2,13 +2,13 @@
   <div id="app" class="h-screen flex flex-col bg-gray-50">
     <!-- 顶部工具栏 -->
     <header class="h-12 bg-white border-b border-gray-200 flex items-center px-4">
-      <h1 class="text-lg font-semibold text-gray-800">Markdown HTML Editor</h1>
+      <h1 class="text-lg font-semibold text-gray-800">MD+HTML Reader</h1>
       <div class="ml-auto flex gap-2">
         <button
           @click="openFolder"
           class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
         >
-          打开文件夹
+          Open folder
         </button>
       </div>
     </header>
@@ -27,8 +27,8 @@
       <section class="flex-1 flex flex-col">
         <div v-if="!workspace.currentFile" class="flex-1 flex items-center justify-center text-gray-400">
           <div class="text-center">
-            <p class="text-xl mb-2">欢迎使用 Markdown HTML Editor</p>
-            <p class="text-sm">点击"打开文件夹"开始编辑</p>
+            <p class="text-xl mb-2">Welcome to MD+HTML Reader</p>
+            <p class="text-sm">Open a folder to start editing</p>
           </div>
         </div>
 
@@ -80,7 +80,7 @@ async function openFolder() {
       await workspace.loadFolder(selected)
     }
   } catch (error) {
-    console.error('打开文件夹失败:', error)
+    console.error('Failed to open folder:', error)
   }
 }
 

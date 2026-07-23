@@ -124,7 +124,7 @@ describe('workspace store', () => {
         path: '/test/file.md',
         content: 'old content',
       }
-      await expect(store.saveCurrentFile('new content')).rejects.toThrow('未加载工作区')
+      await expect(store.saveCurrentFile('new content')).rejects.toThrow('No workspace is open')
       expect(invoke).not.toHaveBeenCalled()
     })
 

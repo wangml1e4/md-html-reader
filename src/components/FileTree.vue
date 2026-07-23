@@ -112,6 +112,7 @@ function getIcon(ext?: string) {
   const normalizedExtension = ext.toLowerCase()
   if (normalizedExtension === '.md') return '📝'
   if (['.html', '.htm', '.xhtml'].includes(normalizedExtension)) return '🌐'
+  if (normalizedExtension === '.yaml') return '⚙️'
   return '📄'
 }
 

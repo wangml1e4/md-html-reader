@@ -10,13 +10,13 @@
         :disabled="isOpeningFullPreview"
         class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
       >
-        {{ isOpeningFullPreview ? '正在打开...' : '打开完整预览' }}
+        {{ isOpeningFullPreview ? t('opening') : t('openFullPreview') }}
       </button>
       <button
         @click="showStaticPreview = !showStaticPreview"
         class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
       >
-        {{ showStaticPreview ? '关闭安全静态预览' : '安全静态预览' }}
+        {{ showStaticPreview ? t('closeSafePreview') : t('safePreview') }}
       </button>
     </div>
 
@@ -33,22 +33,22 @@
       class="flex-1 w-full bg-white"
       :srcdoc="file.content"
       sandbox=""
-      title="HTML 安全静态预览"
+      :title="t('safePreviewTitle')"
       @error="handleStaticPreviewError"
     />
 
     <div v-else class="flex-1 flex items-center justify-center px-8 text-center text-gray-500">
       <div class="max-w-lg space-y-3">
-        <p class="text-base text-gray-700">完整 HTML 会在独立的应用窗口中打开。</p>
+        <p class="text-base text-gray-700">{{ t('fullPreviewDescription') }}</p>
         <p class="text-sm">
-          将直接加载原文件地址，保留作者定义的 <code>&lt;base&gt;</code>、脚本和相对资源；预览窗口不继承主应用的 IPC 权限。
+          {{ t('fullPreviewDetails') }}
         </p>
         <button
           @click="openFullPreview"
           :disabled="isOpeningFullPreview"
           class="px-4 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
         >
-          {{ isOpeningFullPreview ? '正在打开...' : '打开完整预览' }}
+          {{ isOpeningFullPreview ? t('opening') : t('openFullPreview') }}
         </button>
       </div>
     </div>
@@ -59,6 +59,7 @@
 import { computed, ref } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { t } from '../i18n'
 
 const props = defineProps<{
   file: { path: string; content: string }
@@ -82,7 +83,7 @@ async function openFullPreview() {
     await createPreviewWindow(toPreviewUrl(props.file.path))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    previewError.value = `完整预览打开失败：${message}`
+    previewError.value = t('previewOpenError', { message })
   } finally {
     isOpeningFullPreview.value = false
   }
@@ -102,7 +103,7 @@ function createPreviewWindow(url: string) {
       `html-preview-${Date.now()}-${previewWindowSequence++}`,
       {
         url,
-        title: `HTML 预览：${fileName.value}`,
+        title: `HTML preview: ${fileName.value}`,
         width: 1200,
         height: 800,
         minWidth: 640,
@@ -116,6 +117,6 @@ function createPreviewWindow(url: string) {
 }
 
 function handleStaticPreviewError() {
-  previewError.value = '安全静态预览加载失败，请尝试打开完整预览。'
+  previewError.value = t('previewLoadError')
 }
 </script>

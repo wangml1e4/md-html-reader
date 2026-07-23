@@ -1,6 +1,5 @@
 <template>
   <div class="comment-highlights-overlay absolute inset-0 pointer-events-none">
-    <!-- 高亮区域 -->
     <div
       v-for="highlight in validHighlights"
       :key="highlight.commentId"
@@ -20,17 +19,15 @@
       @mouseenter="hoveredId = highlight.commentId"
       @mouseleave="hoveredId = null"
     >
-      <!-- 置信度低的警告标记 -->
       <span
         v-if="highlight.confidence < 0.7"
         class="absolute -right-2 -top-2 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center text-white text-xs"
-        title="评论位置可能不准确"
+        :title="t('commentPositionInaccurate')"
       >
         !
       </span>
     </div>
 
-    <!-- SVG 连线 -->
     <svg
       class="absolute inset-0 pointer-events-none"
       :viewBox="`0 0 ${editorWidth} ${editorHeight}`"
@@ -57,6 +54,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { HighlightPosition } from '../utils/comment-highlight'
+import { t } from '../i18n'
 
 const props = defineProps<{
   highlights: HighlightPosition[]

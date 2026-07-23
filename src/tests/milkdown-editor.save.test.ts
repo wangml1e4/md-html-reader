@@ -92,13 +92,13 @@ describe('MilkdownEditor save state', () => {
     await wrapper.find('button').trigger('click')
 
     expect(saveContent).toHaveBeenCalledWith('# Note')
-    expect(wrapper.text()).toContain('保存中')
-    expect(wrapper.text()).not.toContain('刚刚保存')
+    expect(wrapper.text()).toContain('Saving...')
+    expect(wrapper.text()).not.toContain('Saved just now')
 
     resolveSave()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('刚刚保存')
+    expect(wrapper.text()).toContain('Saved just now')
     wrapper.unmount()
   })
 
@@ -117,8 +117,8 @@ describe('MilkdownEditor save state', () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('保存失败')
-    expect(wrapper.text()).not.toContain('刚刚保存')
+    expect(wrapper.text()).toContain('Save failed')
+    expect(wrapper.text()).not.toContain('Saved just now')
 
     wrapper.unmount()
     errorSpy.mockRestore()
@@ -178,7 +178,7 @@ describe('MilkdownEditor save state', () => {
       props: { file: { path: '/tmp/note.md', content: '# Old' }, saveContent },
     })
 
-    await expect((wrapper.vm as any).replaceContent('# New')).rejects.toThrow('编辑器尚未就绪')
+    await expect((wrapper.vm as any).replaceContent('# New')).rejects.toThrow('The editor is not ready')
     expect(saveContent).not.toHaveBeenCalled()
     wrapper.unmount()
   })
@@ -199,13 +199,13 @@ describe('MilkdownEditor save state', () => {
     await expect((wrapper.vm as any).requestDiscardChanges('switch-workspace')).resolves.toBe(false)
     await expect((wrapper.vm as any).requestDiscardChanges('close-window')).resolves.toBe(false)
     expect(vi.mocked(ask).mock.calls.map(call => call[0])).toEqual([
-      '当前文件有未保存的更改，切换文件会丢失这些更改。是否继续？',
-      '当前文件有未保存的更改，切换工作区会丢失这些更改。是否继续？',
-      '当前文件有未保存的更改，关闭应用会丢失这些更改。是否继续？',
+      'This file has unsaved changes. Switching files will discard them. Continue?',
+      'This file has unsaved changes. Switching workspaces will discard them. Continue?',
+      'This file has unsaved changes. Closing the app will discard them. Continue?',
     ])
     expect(ask).toHaveBeenLastCalledWith(
-      '当前文件有未保存的更改，关闭应用会丢失这些更改。是否继续？',
-      { title: '未保存的更改', kind: 'warning' }
+      'This file has unsaved changes. Closing the app will discard them. Continue?',
+      { title: 'Unsaved changes', kind: 'warning' }
     )
 
     vi.mocked(ask).mockResolvedValue(true)

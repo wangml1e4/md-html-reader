@@ -1,4 +1,4 @@
-# MD+HTML Reader 复刻版 — 项目方案与实施路径
+# MD+HTML Reader — 项目方案与实施路径
 
 > 一个 macOS 原生应用：**只读预览**（复刻原版）+ **Markdown 编辑** + **飞书风格评论**。
 

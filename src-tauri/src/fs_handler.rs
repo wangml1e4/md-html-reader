@@ -125,6 +125,19 @@ mod tests {
     }
 
     #[test]
+    fn list_files_includes_yaml_documents() {
+        let workspace = unique_test_root("yaml");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(workspace.join("config.yaml"), "enabled: true").unwrap();
+
+        let files = list_workspace_files(workspace.to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "config.yaml");
+        assert_eq!(files[0].extension.as_deref(), Some(".yaml"));
+    }
+
+    #[test]
     fn read_file_decodes_declared_legacy_html() {
         let workspace = unique_test_root("legacy-encoding");
         fs::create_dir_all(&workspace).unwrap();
@@ -214,7 +227,7 @@ fn scan_directory(path: &Path) -> Result<Vec<FileItem>, String> {
                 .and_then(|e| e.to_str())
                 .map(|s| format!(".{}", s));
 
-            // 只包含受支持的 Markdown 和 HTML 文件
+            // 只包含受支持的 Markdown、HTML 和 YAML 文件
             if is_supported_document_path(&path) {
                 items.push(FileItem {
                     name,

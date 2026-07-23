@@ -23,13 +23,13 @@ describe('DocumentOutline', () => {
     })
   })
 
-  it('没有标题时显示空状态', () => {
+  it('shows an English empty state when the document has no headings', () => {
     const wrapper = mount(DocumentOutline, {
       props: {
         content: 'plain text',
       },
     })
 
-    expect(wrapper.text()).toContain('当前文档没有标题')
+    expect(wrapper.text()).toContain('This document has no headings')
   })
 })
