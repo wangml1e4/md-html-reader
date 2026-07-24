@@ -1,0 +1,50 @@
+name: Beta feedback
+description: Share your experience evaluating the macOS beta.
+title: "[Beta feedback]: "
+labels: [beta feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for evaluating MD+HTML Reader. Share only non-confidential examples; do not attach source documents, credentials, or personal information.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: "0.9.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Your primary use case
+      options:
+        - Technical writing or documentation
+        - Product requirements or project notes
+        - Open-source project maintenance
+        - Personal Markdown workflow
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: workflow
+    attributes:
+      label: Which parts of the core workflow did you try?
+      options:
+        - label: Opened a local Markdown or YAML folder
+        - label: Edited a document
+        - label: Added or reviewed an anchored comment
+        - label: Searched the workspace
+        - label: Exported standalone HTML
+  - type: textarea
+    id: result
+    attributes:
+      label: What worked, and what got in the way?
+      description: Tell us where the workflow felt clear, confusing, or incomplete.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Please keep examples anonymous and non-confidential.

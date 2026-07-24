@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible problem in MD+HTML Reader.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve MD+HTML Reader. Do not include confidential document content, API keys, or personal information.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Include the app version or commit SHA.
+      placeholder: "0.9.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 15.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Workspace and files
+        - Markdown or YAML editing
+        - Comments and anchors
+        - Search
+        - HTML export
+        - Optional AI tools
+        - Installation or build
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use a minimal, non-confidential example.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or additional context
+      description: Remove secrets and confidential content before attaching anything.
