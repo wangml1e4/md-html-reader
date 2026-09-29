@@ -27,16 +27,18 @@
 
     <!-- Milkdown 编辑器容器 -->
     <div class="flex-1 overflow-auto bg-white relative">
+      <p v-if="initializationError" role="alert" class="p-4 text-sm text-red-600">{{ initializationError }}</p>
+      <p v-else-if="!editor" role="status" class="p-4 text-sm text-gray-500">正在准备编辑器…</p>
       <div
         ref="editorRef"
-        class="milkdown-container"
+        class="milkdown-container markdown-body"
       />
 
       <!-- 评论工具提示 -->
       <CommentTooltip
         :show="showCommentTooltip"
         :selection="currentSelection"
-        @addComment="handleAddComment"
+        @startComment="handleStartComment"
         @translate="handleTranslate"
         @close="hideCommentTooltip"
       />
@@ -45,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, computed } from 'vue'
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
@@ -58,6 +60,8 @@ import { ask } from '@tauri-apps/plugin-dialog'
 import CommentTooltip from './CommentTooltip.vue'
 import { onSelectionChange, type Selection } from '../utils/selection'
 import { createAnchor } from '../utils/comment-anchor'
+import { mapDomSelection } from '../lib/markdown/sourceMap'
+import { prepareMarkdown } from '../lib/markdown/renderer'
 import { t } from '../i18n'
 
 const props = defineProps<{
@@ -66,12 +70,14 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  createComment: [anchor: any, content: string]
+  change: [content: string]
+  startComment: [anchor: ReturnType<typeof createAnchor>, text: string]
   translate: [selection: Selection]
 }>()
 
 const editorRef = ref<HTMLElement | null>(null)
-const editor = ref<Editor | null>(null)
+const editor = shallowRef<Editor | null>(null)
+const initializationError = ref('')
 const currentContent = ref(props.file.content)
 const isSaving = ref(false)
 const lastSaved = ref<number | null>(null)
@@ -79,6 +85,7 @@ const saveError = ref<string | null>(null)
 const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const isE2E = import.meta.env.MODE === 'e2e'
 let activeSave: Promise<void> | null = null
+let disposed = false
 
 type DiscardAction = 'switch-file' | 'switch-workspace' | 'close-window'
 
@@ -104,15 +111,18 @@ onMounted(async () => {
   if (!editorRef.value) return
 
   try {
-    editor.value = await Editor.make()
+    const created = await Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, editorRef.value)
         ctx.set(defaultValueCtx, props.file.content)
 
         // 监听内容变化
         ctx.get(listenerCtx).markdownUpdated((ctx, markdown) => {
+          if (disposed || !editor.value || markdown === currentContent.value) return
           currentContent.value = markdown
+          emit('change', markdown)
           scheduleAutoSave()
+          requestAnimationFrame(mapSourceBlocks)
         })
       })
       // .use(nord)  // 与 Tailwind 冲突，暂时禁用
@@ -123,17 +133,24 @@ onMounted(async () => {
       .use(prism)
       .create()
 
+    if (disposed) { await created.destroy(); return }
+    editor.value = created
+
     // 初始化文本选择监听
+    mapSourceBlocks()
     setupSelectionListener()
     setupE2EHelpers()
 
   } catch (error) {
-    console.error('Failed to initialize editor:', error)
+    if (disposed) return
+    initializationError.value = '编辑器初始化失败，请重新打开文件。'
+    console.error('初始化编辑器失败:', error)
   }
 })
 
 // 清理编辑器和所有事件监听器
 onUnmounted(() => {
+  disposed = true
   if (autoSaveTimer.value) {
     clearTimeout(autoSaveTimer.value)
   }
@@ -147,8 +164,15 @@ onUnmounted(() => {
 })
 
 // 设置文本选择监听
+function mapSourceBlocks() {
+  const nodes = editorRef.value?.querySelector('.ProseMirror')?.children
+  if (!nodes) return
+  const document = prepareMarkdown(currentContent.value)
+  Array.from(nodes).forEach((node, index) => { const block = document.blocks[index]; if (block) node.setAttribute('data-source-line', String(block.line)) })
+}
 function setupSelectionListener() {
   cleanupSelection = onSelectionChange((selection) => {
+    selection = editorRef.value ? mapDomSelection(editorRef.value, currentContent.value) : null
     currentSelection.value = selection
 
     // 只有选中了文本才显示工具提示
@@ -168,6 +192,7 @@ function setupE2EHelpers() {
   ;(window as any).__markdownHtmlE2E = {
     setEditorContent(content: string) {
       currentContent.value = content
+      emit('change', content)
       const editable = editorRef.value?.querySelector<HTMLElement>('.ProseMirror, [contenteditable="true"]')
       if (editable) {
         editable.textContent = content
@@ -177,14 +202,14 @@ function setupE2EHelpers() {
 }
 
 // 处理创建评论
-function handleAddComment(content: string, selection: Selection) {
+function handleStartComment(selection: Selection) {
   const anchor = createAnchor(
     currentContent.value,
     selection.start,
     selection.end
   )
 
-  emit('createComment', anchor, content)
+  emit('startComment', anchor, selection.text)
   hideCommentTooltip()
 }
 
@@ -193,10 +218,10 @@ function handleTranslate(selection: Selection) {
   hideCommentTooltip()
 }
 
-function scrollToHeading(text: string, level: number) {
+function scrollToHeading(text: string, level: number, line?: number) {
   const selector = `h${level}`
   const headings = Array.from(editorRef.value?.querySelectorAll<HTMLElement>(selector) || [])
-  const target = headings.find(heading => heading.textContent?.trim() === text)
+  const target = headings.find(heading => line ? Number(heading.dataset.sourceLine) === line : heading.textContent?.trim() === text)
 
   if (target) {
     target.scrollIntoView?.({ block: 'start' })
@@ -292,7 +317,7 @@ async function replaceContent(content: string) {
 
   if (!editor.value) throw new Error(t('aiDraftApplyError'))
 
-  editor.value.action(ctx => {
+  await editor.value.action(ctx => {
     const document = ctx.get(parserCtx)(content)
     if (!document) throw new Error(t('couldNotLoadMarkdown'))
 
@@ -300,6 +325,7 @@ async function replaceContent(content: string) {
     view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, document.content))
   })
   currentContent.value = content
+  emit('change', content)
   await save()
 }
 
@@ -331,7 +357,7 @@ function save(): Promise<void> {
 onMounted(() => {
   const handleKeyDown = (e: KeyboardEvent) => {
     // Cmd+S / Ctrl+S 保存
-    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    if (editorRef.value?.getClientRects().length && (e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault()
       manualSave()
     }

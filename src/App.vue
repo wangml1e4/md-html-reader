@@ -1,47 +1,45 @@
 <template>
   <div id="app" class="h-screen flex flex-col bg-gray-50">
-    <header class="h-14 bg-white border-b border-gray-200 flex items-center px-4">
+    <header class="apple-global-nav shrink-0 flex items-center px-4 sm:px-6">
       <div>
-        <h1 class="text-lg font-semibold text-gray-900">MD+HTML Reader</h1>
-        <p class="text-xs text-gray-500">{{ t('appSubtitle') }}</p>
+        <h1 class="text-xs font-semibold tracking-tight text-white">Markdown Reader</h1>
+        <p class="sr-only">{{ t('appSubtitle') }}</p>
       </div>
       <div class="ml-auto flex items-center gap-2">
         <select
           :value="locale"
-          class="rounded border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
+          class="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white"
           :aria-label="t('language')"
           @change="changeLocale"
         >
           <option value="en">English</option>
           <option value="zh-CN">中文</option>
         </select>
-        <button
-          class="px-3 py-1 text-sm text-gray-600 rounded hover:bg-gray-100"
-          :aria-label="t('quickStart')"
+        <IconButton
+          icon="help"
+          :label="t('quickStart')"
+          class="apple-utility-button apple-nav-secondary"
           @click="showGettingStarted = true"
-        >
-          {{ t('quickStart') }}
-        </button>
-        <details v-if="workspace.folderPath" class="relative">
-          <summary class="cursor-pointer list-none px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-            {{ t('documentTools') }}
-          </summary>
-          <div class="absolute right-0 z-30 mt-2 w-[44rem] max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+        />
+        <IconButton v-if="workspace.folderPath" icon="connection" label="MCP" class="apple-utility-button apple-nav-secondary" @click="showMcp = !showMcp" />
+        <details v-if="workspace.folderPath" class="apple-nav-document-tools relative">
+          <summary class="icon-disclosure apple-utility-button cursor-pointer list-none" :title="t('documentTools')" :aria-label="t('documentTools')"><AppIcon name="tools" /><span class="sr-only">{{ t('documentTools') }}</span></summary>
+          <div class="apple-modal absolute right-0 z-30 mt-2 w-[44rem] max-w-[calc(100vw-2rem)] p-4">
             <div class="flex flex-wrap gap-2">
-        <button
+        <IconButton
+          icon="find-file"
+          :label="t('findFiles')"
           @click="openSearch('files')"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
           :disabled="isMarkdownTranslating"
-        >
-          {{ t('findFiles') }}
-        </button>
-        <button
+        />
+        <IconButton
+          icon="search"
+          :label="t('searchContent')"
           @click="openSearch('content')"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
           :disabled="isMarkdownTranslating"
-        >
-          {{ t('searchContent') }}
-        </button>
+        />
         <select
           v-model="htmlGenerationMode"
           class="px-2 py-1 text-sm bg-gray-100 text-gray-700 rounded"
@@ -62,14 +60,14 @@
           />
           {{ t('includeMarkdown') }}
         </label>
-        <button
+        <IconButton
+          icon="export"
+          :label="isExporting ? t('exporting') : htmlGenerationMode === 'ai-reading' ? t('createReadingVersion') : t('exportHtml')"
           @click="generateHtml"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
           :disabled="!currentIsMarkdown || isExporting || (htmlGenerationMode === 'ai-reading' && !assistantServiceReady)"
           :title="htmlGenerationMode === 'ai-reading' ? assistantDisabledReason : ''"
-        >
-          {{ isExporting ? t('exporting') : htmlGenerationMode === 'ai-reading' ? t('createReadingVersion') : t('exportHtml') }}
-        </button>
+        />
         <select
           v-model="translationService"
           @change="handleTranslationServiceChange"
@@ -80,54 +78,55 @@
           <option value="tencent">Tencent Translate</option>
           <option value="openai-compatible">OpenAI-compatible</option>
         </select>
-        <button
+        <IconButton
+          icon="settings"
+          :label="t('modelSettings')"
+          :aria-label="t('configureModel')"
           @click="openAiConfigOpen = !openAiConfigOpen"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-          :aria-label="t('configureModel')"
-        >
-          {{ t('modelSettings') }}
-        </button>
-        <button
-          @click="translateMarkdownFile"
-          class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-          :disabled="!currentIsMarkdown || isMarkdownTranslating || (translationService === 'openai-compatible' && !openAiConfigComplete)"
-        >
-          {{ isMarkdownTranslating ? t('translating') : t('translateChineseCopy') }}
-        </button>
-        <button
+        />
+        <IconButton
+          icon="comment"
+          :label="isAssistantRunning && assistantMode === 'suggestions' ? t('reviewing') : t('suggestFromComments')"
           @click="runDocumentAssistant('suggestions')"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
           :disabled="!currentIsMarkdown || !comments.list.length || isAssistantRunning || !assistantServiceReady"
           :title="assistantDisabledReason"
-        >
-          {{ isAssistantRunning && assistantMode === 'suggestions' ? t('reviewing') : t('suggestFromComments') }}
-        </button>
-        <button
+        />
+        <IconButton
+          icon="improve"
+          :label="isAssistantRunning && assistantMode === 'optimize' ? t('improving') : t('improveDocument')"
           @click="runDocumentAssistant('optimize')"
           class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
           :disabled="!currentIsMarkdown || isAssistantRunning || !assistantServiceReady"
           :title="assistantDisabledReason"
-        >
-          {{ isAssistantRunning && assistantMode === 'optimize' ? t('improving') : t('improveDocument') }}
-        </button>
+        />
             </div>
           </div>
         </details>
         <button
           @click="openFolder"
-          class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+          class="apple-primary-button disabled:opacity-50"
           :disabled="isMarkdownTranslating || isFolderOpening"
         >
           {{ isFolderOpening ? t('opening') : t('openFolder') }}
         </button>
       </div>
     </header>
+    <section v-if="showMcp && workspace.folderPath" class="apple-panel p-4 border-b text-sm">
+      <p>将此配置加入 MCP 客户端。仅授权当前工作区，默认只读；服务访问磁盘文件，不读取未保存草稿。</p>
+      <label><input v-model="mcpWritable" type="checkbox" @change="loadMcpConfig" /> 允许客户端写入此工作区的已有文档（需匹配文件版本）</label>
+      <IconButton class="ml-4" icon="config" label="生成配置" @click="loadMcpConfig" />
+      <pre class="text-xs whitespace-pre-wrap">{{ mcpConfig }}</pre>
+    </section>
+
 
     <div
-      v-if="workspaceError"
+      v-if="workspaceError || workspace.openError"
+      role="alert"
       class="px-4 py-2 text-sm border-b bg-red-50 text-red-600 border-red-100"
     >
-      {{ workspaceError }}
+      {{ workspaceError || workspace.openError }}
     </div>
 
     <div
@@ -149,12 +148,12 @@
     <section
       v-if="openAiConfigOpen"
       :aria-label="t('modelSettingsTitle')"
-      class="px-4 py-3 bg-white border-b border-gray-200"
+      class="apple-panel px-4 py-3 border-b"
     >
       <div class="max-w-4xl space-y-2">
         <div class="flex items-center justify-between">
           <div class="text-sm font-medium text-gray-800">{{ t('modelSettingsTitle') }}</div>
-          <button class="text-xs text-gray-500 hover:text-gray-700" @click="openAiConfigOpen = false">{{ t('close') }}</button>
+          <IconButton class="text-gray-500 hover:text-gray-700" icon="close" :label="t('close')" @click="openAiConfigOpen = false" />
         </div>
         <div class="grid gap-2 md:grid-cols-3">
           <label class="text-xs text-gray-600">
@@ -193,27 +192,27 @@
           <option v-for="model in openAiModels" :key="model" :value="model" />
         </datalist>
         <div class="flex flex-wrap gap-2">
-          <button
+          <IconButton
+            icon="save"
+            :label="t('saveSettings')"
             class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
             :disabled="!openAiConnectionConfigComplete"
             @click="saveOpenAiConfiguration"
-          >
-            {{ t('saveSettings') }}
-          </button>
-          <button
+          />
+          <IconButton
+            icon="link"
+            :label="isTestingOpenAiConnection ? t('testing') : t('testConnection')"
             class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
             :disabled="!openAiConnectionConfigComplete || isTestingOpenAiConnection"
             @click="testOpenAiConnection"
-          >
-            {{ isTestingOpenAiConnection ? t('testing') : t('testConnection') }}
-          </button>
-          <button
+          />
+          <IconButton
+            icon="refresh"
+            :label="isLoadingOpenAiModels ? t('loading') : t('loadModels')"
             class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
             :disabled="!openAiConnectionConfigComplete || isLoadingOpenAiModels"
             @click="loadOpenAiModels"
-          >
-            {{ isLoadingOpenAiModels ? t('loading') : t('loadModels') }}
-          </button>
+          />
         </div>
         <p class="text-xs text-gray-500">
           {{ t('modelSettingsHelp') }}
@@ -225,62 +224,78 @@
         </p>
         <p v-if="permanentAssistantWritePermission" class="text-xs text-amber-700">
           {{ t('permanentPermission', { scope: assistantWritePermissionScopeLabel }) }}
-          <button class="underline" @click="setPermanentAssistantWritePermission(false)">{{ t('revokePermission') }}</button>
+          <IconButton class="underline" icon="unlock" :label="t('revokePermission')" @click="setPermanentAssistantWritePermission(false)" />
         </p>
       </div>
     </section>
 
-    <main class="flex-1 flex overflow-hidden">
+    <main class="relative flex-1 flex overflow-hidden">
       <aside
         v-if="workspace.folderPath"
-        class="w-64 bg-white border-r border-gray-200 overflow-auto"
+        v-show="!focusMode"
+        class="apple-workspace-sidebar bg-white border-r border-gray-200 overflow-auto"
+        :style="{ '--workspace-sidebar-width': `${workspaceSidebarWidth}px` }"
       >
-        <div class="p-2 border-b border-gray-200 space-y-2">
-          <div class="flex gap-1">
-            <button
-              class="px-2 py-1 text-xs rounded"
-              :class="fileFilter === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'"
-              @click="fileFilter = 'all'"
-            >
-              {{ t('allFiles') }}
-            </button>
-            <button
-              class="px-2 py-1 text-xs rounded"
-              :class="fileFilter === 'markdown' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'"
-              @click="fileFilter = 'markdown'"
-            >
-              {{ t('markdown') }}
-            </button>
-            <button
-              class="px-2 py-1 text-xs rounded"
-              :class="fileFilter === 'html' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'"
-              @click="fileFilter = 'html'"
-            >
-              {{ t('html') }}
-            </button>
-          </div>
-          <div class="flex gap-1">
-            <button
-              class="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
-              :disabled="!workspace.currentFile"
-              @click="locateCurrentFile"
-            >
-              {{ t('locateCurrentFile') }}
-            </button>
-            <button
-              class="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-              @click="toggleDisplayMode"
-            >
-              {{ displayMode === 'filename' ? t('showTitles') : t('showFileNames') }}
-            </button>
-          </div>
-          <button
-            class="w-full px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+        <div class="workspace-file-tools" role="toolbar" :aria-label="t('fileTools')">
+          <IconButton
+            icon="all-files"
+            :label="t('allFiles')"
+            class="workspace-file-tool"
+            :class="{ 'is-active': fileFilter === 'all' }"
+            :aria-pressed="fileFilter === 'all'"
+            @click="fileFilter = 'all'"
+          />
+          <IconButton
+            icon="markdown"
+            :label="t('markdown')"
+            class="workspace-file-tool"
+            :class="{ 'is-active': fileFilter === 'markdown' }"
+            :aria-pressed="fileFilter === 'markdown'"
+            @click="fileFilter = 'markdown'"
+          />
+          <IconButton
+            icon="html"
+            :label="t('html')"
+            class="workspace-file-tool"
+            :class="{ 'is-active': fileFilter === 'html' }"
+            :aria-pressed="fileFilter === 'html'"
+            @click="fileFilter = 'html'"
+          />
+          <IconButton
+            icon="locate"
+            :label="t('locateCurrentFile')"
+            class="workspace-file-tool"
+            :disabled="!workspace.currentFile"
+            @click="locateCurrentFile"
+          />
+          <IconButton
+            icon="new-file"
+            :label="t('newMarkdownFile')"
+            class="workspace-file-tool"
+            :disabled="isMarkdownTranslating || isCreatingMarkdown"
+            @click="openCreateMarkdownDialog"
+          />
+          <IconButton
+            icon="delete"
+            :label="t('deleteMarkdownFile')"
+            class="workspace-file-tool is-danger"
+            :disabled="!currentIsMarkdown || isMarkdownTranslating || isDeletingMarkdown"
+            @click="deleteCurrentMarkdownFile"
+          />
+          <IconButton
+            icon="titles"
+            :label="displayMode === 'filename' ? t('showTitles') : t('showFileNames')"
+            class="workspace-file-tool"
+            @click="toggleDisplayMode"
+          />
+          <IconButton
+            icon="outline"
+            :label="outlineOpen && currentIsMarkdown ? t('hideOutline') : t('showOutline')"
+            class="workspace-file-tool"
+            :aria-pressed="outlineOpen"
             :disabled="!currentIsMarkdown"
             @click="outlineOpen = !outlineOpen"
-          >
-            {{ outlineOpen && currentIsMarkdown ? t('hideOutline') : t('showOutline') }}
-          </button>
+          />
         </div>
         <FileTree
           :files="workspace.files"
@@ -292,52 +307,67 @@
           @select="openFile"
         />
       </aside>
+      <div
+        v-if="workspace.folderPath && !focusMode"
+        class="sidebar-resize-handle sidebar-resize-handle-left"
+        role="separator"
+        tabindex="0"
+        aria-label="调整文件侧边栏宽度"
+        aria-orientation="vertical"
+        :aria-valuemin="WORKSPACE_SIDEBAR_MIN"
+        :aria-valuemax="WORKSPACE_SIDEBAR_MAX"
+        :aria-valuenow="workspaceSidebarWidth"
+        @pointerdown="startSidebarResize('workspace', $event)"
+        @keydown="resizeSidebarWithKeyboard('workspace', $event)"
+      />
 
       <aside
-        v-if="outlineOpen && currentIsMarkdown"
+        v-if="outlineOpen && currentIsMarkdown && !focusMode"
         class="w-56 bg-white border-r border-gray-200 overflow-hidden"
       >
         <DocumentOutline
           :content="workspace.currentFile?.content || ''"
+          :headings="documentHeadings"
           @select="handleOutlineSelect"
         />
       </aside>
 
-      <section class="flex-1 flex flex-col">
-        <div v-if="!workspace.folderPath" class="flex-1 overflow-auto bg-slate-50 p-6 sm:p-10">
-          <section class="mx-auto flex min-h-full max-w-4xl flex-col justify-center">
-            <p class="text-sm font-medium text-blue-700">MD+HTML Reader</p>
-            <h2 class="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+      <section class="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div v-if="workspace.openingPath" role="status" class="px-4 py-2 text-sm">Opening {{ workspace.openingPath.split('/').pop() }}…</div>
+        <div v-if="!workspace.folderPath" class="apple-onboarding flex-1 overflow-auto px-6 py-10 sm:px-10">
+          <section class="apple-onboarding-copy mx-auto flex min-h-full flex-col justify-center">
+            <p class="text-sm font-medium text-blue-700">Markdown Reader</p>
+            <h2 class="apple-onboarding-title mt-3">
               {{ t('onboardingTitle') }}
             </h2>
-            <p class="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+            <p class="apple-onboarding-description mt-4 max-w-2xl">
               {{ t('onboardingDescription') }}
             </p>
             <div class="mt-7 flex flex-wrap gap-3">
               <button
-                class="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                class="apple-primary-button disabled:opacity-50"
                 :disabled="isFolderOpening"
                 @click="openFolder"
               >
                 {{ isFolderOpening ? t('openingFolder') : t('openDocumentFolder') }}
               </button>
               <button
-                class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                class="apple-secondary-button"
                 @click="showGettingStarted = true"
               >
                 {{ t('walkthrough') }}
               </button>
               <button
-                class="px-2 py-2 text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-900"
+                class="px-2 py-2 text-sm text-blue-700 hover:text-blue-600"
                 @click="showTrustInfo = true"
               >
                 {{ t('privacyBetaNotes') }}
               </button>
             </div>
-            <ol class="mt-10 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
-              <li class="rounded-lg border border-slate-200 bg-white p-4"><span class="font-semibold text-blue-700">1.</span> {{ t('onboardingStepOne') }}</li>
-              <li class="rounded-lg border border-slate-200 bg-white p-4"><span class="font-semibold text-blue-700">2.</span> {{ t('onboardingStepTwo') }}</li>
-              <li class="rounded-lg border border-slate-200 bg-white p-4"><span class="font-semibold text-blue-700">3.</span> {{ t('onboardingStepThree') }}</li>
+            <ol class="mt-10 grid gap-3 text-sm sm:grid-cols-3">
+              <li class="apple-onboarding-step"><span class="apple-step-number">1.</span> {{ t('onboardingStepOne') }}</li>
+              <li class="apple-onboarding-step"><span class="apple-step-number">2.</span> {{ t('onboardingStepTwo') }}</li>
+              <li class="apple-onboarding-step"><span class="apple-step-number">3.</span> {{ t('onboardingStepThree') }}</li>
             </ol>
           </section>
         </div>
@@ -350,41 +380,84 @@
           </div>
         </div>
 
-        <div v-else class="flex-1 overflow-hidden">
-          <HtmlRenderer
-            v-if="currentIsHtml"
-            :key="workspace.currentFile.path"
-            :file="workspace.currentFile"
-          />
-
-          <YamlEditor
-            v-else-if="currentIsYaml"
-            ref="editorRef"
-            :key="workspace.currentFile.path"
-            :file="workspace.currentFile"
-            :save-content="saveFile"
-          />
-
-          <MilkdownEditor
-            v-else
-            ref="editorRef"
-            :key="workspace.currentFile.path"
-            :file="workspace.currentFile"
-            :save-content="saveFile"
-            @createComment="handleCreateComment"
-            @translate="handleTranslate"
-          />
+        <div v-else class="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <nav role="tablist" aria-label="文档标签" class="flex shrink-0 overflow-x-auto border-b bg-[#fafafc] px-2 pt-2">
+            <div v-for="tab in workspace.tabs" :key="tab.path" class="flex items-center gap-2 rounded-t-lg px-3 py-2 text-sm" :class="{ 'bg-white border border-b-white border-gray-200': tab.path === workspace.currentFile?.path }">
+              <button role="tab" :aria-selected="tab.path === workspace.currentFile?.path" @click="openFile(tab.path)">{{ tab.path.split('/').pop() }}{{ tab.draft !== undefined && tab.draft !== tab.content ? ' ●' : '' }}</button>
+              <IconButton icon="close" :label="'关闭 ' + tab.path.split('/').pop()" @click="closeTab(tab.path)" />
+            </div>
+          </nav>
+          <div v-for="tab in workspace.tabs" v-show="tab.path === workspace.currentFile?.path" :data-active-document="tab.path === workspace.currentFile?.path" :key="tab.path" class="flex-1 min-h-0 overflow-hidden">
+            <HtmlRenderer v-if="/\.(html?|xhtml)$/i.test(tab.path)" :file="tab" />
+            <YamlEditor v-else-if="/\.yaml$/i.test(tab.path)" :ref="(el: any) => setTabEditor(tab.path, el)" :file="tab" :save-content="(content: string) => saveTabFile(tab.path, content)" />
+            <MarkdownDocument v-else :ref="(el: any) => setTabEditor(tab.path, el)" :file="tab" :save-content="(content: string) => saveTabFile(tab.path, content)"
+              :is-markdown-translating="isMarkdownTranslating" :translation-disabled="isMarkdownTranslating || (translationService === 'openai-compatible' && !openAiConfigComplete)"
+              @change="tab.draft = $event" @start-comment="handleStartComment" @translate="handleTranslate"
+              @translate-chinese-copy="translateMarkdownFile"
+              @headings="tabHeadings.set(tab.path, $event); tab.path === workspace.currentFile?.path && (documentHeadings = $event)" @focus="focusMode = $event" />
+          </div>
         </div>
       </section>
 
+      <div
+        v-if="showDocumentSidebar"
+        class="sidebar-resize-handle sidebar-resize-handle-right"
+        role="separator"
+        tabindex="0"
+        aria-label="调整文档工具侧边栏宽度"
+        aria-orientation="vertical"
+        :aria-valuemin="DOCUMENT_SIDEBAR_MIN"
+        :aria-valuemax="DOCUMENT_SIDEBAR_MAX"
+        :aria-valuenow="documentSidebarWidth"
+        @pointerdown="startSidebarResize('document', $event)"
+        @keydown="resizeSidebarWithKeyboard('document', $event)"
+      />
       <aside
-        v-if="workspace.currentFile && comments.list.length > 0"
-        class="w-80 bg-white border-l border-gray-200 overflow-auto"
+        v-if="showDocumentSidebar"
+        class="apple-document-sidebar shrink-0 overflow-hidden border-l border-gray-200 bg-white"
+        :style="{ '--document-sidebar-width': `${documentSidebarWidth}px` }"
+        aria-label="Document tools"
       >
+        <div class="apple-document-sidebar-tabs" role="tablist" :aria-label="t('documentTools')">
+          <button
+            role="tab"
+            class="apple-document-sidebar-tab"
+            :class="{ 'is-active': activeSidebarPanel === 'comments' }"
+            :aria-selected="activeSidebarPanel === 'comments'"
+            @click="activeSidebarPanel = 'comments'"
+          >
+            {{ t('comments', { count: comments.list.length }) }}
+          </button>
+          <button
+            role="tab"
+            class="apple-document-sidebar-tab"
+            :class="{ 'is-active': activeSidebarPanel === 'translation' }"
+            :aria-selected="activeSidebarPanel === 'translation'"
+            :disabled="translationState === 'idle'"
+            @click="activeSidebarPanel = 'translation'"
+          >
+            {{ t('translation') }}
+          </button>
+        </div>
         <CommentSidebar
+          v-if="activeSidebarPanel === 'comments'"
           :comments="comments.list"
+          :draft="commentDraft"
+          :submitting="isSubmittingComment"
+          @locate="locateComment"
           @resolve="handleResolveComment"
           @delete="handleDeleteComment"
+          @submit="submitComment"
+          @cancel="commentDraft = null"
+        />
+        <TranslationCard
+          v-else
+          :state="translationState"
+          :original="translationOriginal"
+          :translated="translationTranslated"
+          :service="translationService"
+          :error="translationError"
+          @close="closeTranslationSidebar"
         />
       </aside>
     </main>
@@ -400,20 +473,10 @@
     <div
       v-if="exportMessage"
       role="status"
-      class="fixed bottom-4 right-4 bg-gray-900 text-white text-sm px-4 py-2 rounded shadow-lg"
+      class="apple-modal fixed bottom-4 right-4 px-4 py-2 text-sm text-gray-800"
     >
       {{ exportMessage }}
     </div>
-
-    <TranslationCard
-      v-if="translationState !== 'idle'"
-      :state="translationState"
-      :original="translationOriginal"
-      :translated="translationTranslated"
-      :service="translationService"
-      :error="translationError"
-      @close="translationState = 'idle'"
-    />
 
     <DocumentAssistantPanel
       v-if="assistantResult"
@@ -428,14 +491,44 @@
       @update:permanent-write-permission="setPermanentAssistantWritePermission"
     />
 
-    <div v-if="showGettingStarted" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6" role="dialog" aria-modal="true" :aria-label="t('quickStartDialog')">
-      <section class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+    <div v-if="showCreateMarkdown" class="apple-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-6" role="dialog" aria-modal="true" :aria-label="t('newMarkdownFile')">
+      <section class="apple-modal w-full max-w-md p-6">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-sm font-medium text-blue-700">{{ t('fileTools') }}</p>
+            <h2 class="mt-1 text-xl font-semibold text-slate-900">{{ t('newMarkdownFile') }}</h2>
+          </div>
+          <IconButton class="text-slate-500 hover:text-slate-800" icon="close" :label="t('close')" @click="closeCreateMarkdownDialog" />
+        </div>
+        <form class="mt-6" @submit.prevent="createMarkdownFile">
+          <label for="new-markdown-file-name" class="block text-sm font-medium text-slate-800">{{ t('markdownFileName') }}</label>
+          <input
+            id="new-markdown-file-name"
+            v-model="newMarkdownName"
+            class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            :placeholder="t('markdownFileNamePlaceholder')"
+            autocomplete="off"
+          />
+          <p class="mt-2 text-xs leading-5 text-slate-500">{{ t('newMarkdownFileHint') }}</p>
+          <p v-if="newMarkdownError" class="mt-3 text-sm text-red-700" role="alert">{{ newMarkdownError }}</p>
+          <div class="mt-6 flex justify-end gap-3">
+            <button type="button" class="text-sm font-medium text-slate-600 underline underline-offset-4" @click="closeCreateMarkdownDialog">{{ t('cancel') }}</button>
+            <button class="apple-primary-button" :disabled="!newMarkdownName.trim() || isCreatingMarkdown">
+              {{ isCreatingMarkdown ? t('creatingMarkdownFile') : t('createMarkdownFile') }}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div v-if="showGettingStarted" class="apple-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-6" role="dialog" aria-modal="true" :aria-label="t('quickStartDialog')">
+      <section class="apple-modal w-full max-w-lg p-6">
         <div class="flex items-start justify-between gap-4">
           <div>
             <p class="text-sm font-medium text-blue-700">{{ t('quickStartLabel') }}</p>
             <h2 class="mt-1 text-xl font-semibold text-slate-900">{{ t('quickStartTitle') }}</h2>
           </div>
-          <button class="text-sm text-slate-500 hover:text-slate-800" @click="showGettingStarted = false">{{ t('close') }}</button>
+          <IconButton class="text-slate-500 hover:text-slate-800" icon="close" :label="t('close')" @click="showGettingStarted = false" />
         </div>
         <ol class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
           <li><strong>1.</strong> {{ t('quickStartStepOne') }}</li>
@@ -447,49 +540,54 @@
         </p>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
           <button class="text-sm font-medium text-slate-600 underline underline-offset-4" @click="showTrustInfo = true">{{ t('privacyBetaNotes') }}</button>
-          <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" @click="showGettingStarted = false; openFolder()">{{ t('openFolder') }}</button>
+          <button class="apple-primary-button" @click="showGettingStarted = false; openFolder()">{{ t('openFolder') }}</button>
         </div>
       </section>
     </div>
 
-    <div v-if="showTrustInfo" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-6" role="dialog" aria-modal="true" :aria-label="t('privacyDialog')">
-      <section class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+    <div v-if="showTrustInfo" class="apple-modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-6" role="dialog" aria-modal="true" :aria-label="t('privacyDialog')">
+      <section class="apple-modal w-full max-w-lg p-6">
         <div class="flex items-start justify-between gap-4">
           <div>
             <p class="text-sm font-medium text-blue-700">{{ t('privacyLabel') }}</p>
             <h2 class="mt-1 text-xl font-semibold text-slate-900">{{ t('privacyTitle') }}</h2>
           </div>
-          <button class="text-sm text-slate-500 hover:text-slate-800" @click="showTrustInfo = false">{{ t('close') }}</button>
+          <IconButton class="text-slate-500 hover:text-slate-800" icon="close" :label="t('close')" @click="showTrustInfo = false" />
         </div>
         <div class="mt-5 space-y-4 text-sm leading-6 text-slate-700">
           <p>{{ t('privacyLocal') }}</p>
           <p>{{ t('privacyAi') }}</p>
           <p>{{ t('privacyBeta') }}</p>
         </div>
-        <button class="mt-6 rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" @click="showTrustInfo = false">{{ t('gotIt') }}</button>
+        <button class="apple-primary-button mt-6" @click="showTrustInfo = false">{{ t('gotIt') }}</button>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, ref, watch, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ask, open, save } from '@tauri-apps/plugin-dialog'
 import { useWorkspaceStore } from './stores/workspace'
 import { useCommentsStore } from './stores/comments'
+import AppIcon from './components/AppIcon.vue'
+import IconButton from './components/IconButton.vue'
 import FileTree from './components/FileTree.vue'
 import HtmlRenderer from './components/HtmlRenderer.vue'
 import YamlEditor from './components/YamlEditor.vue'
 import CommentSidebar from './components/CommentSidebar.vue'
-import DocumentOutline from './components/DocumentOutline.vue'
+import type { OutlineHeading } from './lib/markdown/renderer'
+import './styles/markdown.css'
 import type { Selection } from './utils/selection'
+import type { CommentAnchor } from './utils/comment-anchor'
 import { locale, setLocale, t, type AppLocale } from './i18n'
 
-const MilkdownEditor = defineAsyncComponent(() =>
-  import('./components/MilkdownEditor.vue').then(module => module.default)
+const MarkdownDocument = defineAsyncComponent(() =>
+  import('./components/MarkdownDocument.vue').then(module => module.default)
 )
+const DocumentOutline = defineAsyncComponent(() => import('./components/DocumentOutline.vue').then(module => module.default))
 const SearchPanel = defineAsyncComponent(() =>
   import('./components/SearchPanel.vue').then(module => module.default)
 )
@@ -505,19 +603,19 @@ type FileFilter = 'all' | 'markdown' | 'html'
 type DisplayMode = 'filename' | 'title'
 type TranslationService = 'ollama' | 'tencent' | 'openai-compatible'
 type TranslationState = 'idle' | 'loading' | 'success' | 'error'
+type SidebarPanel = 'comments' | 'translation'
 type DocumentAssistantMode = 'suggestions' | 'optimize'
 type HtmlGenerationMode = 'default' | 'ai-reading'
-interface OutlineHeading {
-  level: number
-  text: string
-  line: number
-}
 interface TranslationResult {
   original: string
   translated: string
   sourceLang: string
   targetLang: string
   service: TranslationService
+}
+interface PendingComment {
+  anchor: CommentAnchor
+  text: string
 }
 interface MarkdownTranslationResult {
   outputPath: string
@@ -555,11 +653,12 @@ interface DocumentAssistantSession {
   permissionScope: AssistantWritePermissionScope
 }
 interface EditorHandle {
+  scrollToSource?: (start: number, length: number) => void
   requestDiscardChanges: (action: 'switch-file' | 'switch-workspace' | 'close-window') => Promise<boolean>
   saveCurrentContent: () => Promise<void>
   getCurrentContent: () => string
   replaceContent: (content: string) => Promise<void>
-  scrollToHeading: (text: string, level: number) => void
+  scrollToHeading: (text: string, level: number, line?: number) => void
 }
 
 const workspace = useWorkspaceStore()
@@ -572,6 +671,27 @@ const fileFilter = ref<FileFilter>('all')
 const displayMode = ref<DisplayMode>('filename')
 const locateToken = ref(0)
 const outlineOpen = ref(false)
+const documentHeadings = ref<OutlineHeading[]>([])
+const focusMode = ref(false)
+const WORKSPACE_SIDEBAR_MIN = 208
+const WORKSPACE_SIDEBAR_MAX = 416
+const DOCUMENT_SIDEBAR_MIN = 288
+const DOCUMENT_SIDEBAR_MAX = 560
+type ResizableSidebar = 'workspace' | 'document'
+const sidebarStorageKey = 'md-html-reader.sidebar-widths'
+const sidebarWidths = readSidebarWidths()
+const workspaceSidebarWidth = ref(sidebarWidths.workspace)
+const documentSidebarWidth = ref(sidebarWidths.document)
+let removeSidebarResizeListeners: (() => void) | null = null
+const activeSidebarPanel = ref<SidebarPanel>('comments')
+const commentDraft = ref<PendingComment | null>(null)
+watch(() => workspace.currentFile?.path, path => {
+  documentHeadings.value = path ? tabHeadings.get(path) || [] : []
+  focusMode.value = false
+  commentDraft.value = null
+  resetTranslationSidebar()
+  activeSidebarPanel.value = 'comments'
+})
 const editorRef = ref<EditorHandle | null>(null)
 const translationService = ref<TranslationService>('ollama')
 const htmlGenerationMode = ref<HtmlGenerationMode>('default')
@@ -589,13 +709,25 @@ const translationState = ref<TranslationState>('idle')
 const translationOriginal = ref('')
 const translationTranslated = ref('')
 const translationError = ref<string | null>(null)
+const isSubmittingComment = ref(false)
+let translationRequest = 0
 const isExporting = ref(false)
+const showMcp = ref(false), mcpWritable = ref(false), mcpConfig = ref('')
+async function loadMcpConfig() {
+  try { mcpConfig.value = JSON.stringify(await invoke('mcp_configuration', { workspacePath: workspace.folderPath, allowWrite: mcpWritable.value }), null, 2) }
+  catch (error) { mcpConfig.value = String(error) }
+}
 const exportMessage = ref<string | null>(null)
 const isMarkdownTranslating = ref(false)
 const markdownTranslationMessage = ref<string | null>(null)
 const markdownTranslationError = ref<string | null>(null)
 const isFolderOpening = ref(false)
 const workspaceError = ref<string | null>(null)
+const showCreateMarkdown = ref(false)
+const newMarkdownName = ref('')
+const newMarkdownError = ref<string | null>(null)
+const isCreatingMarkdown = ref(false)
+const isDeletingMarkdown = ref(false)
 const assistantMode = ref<DocumentAssistantMode | null>(null)
 const isAssistantRunning = ref(false)
 const isAssistantApplying = ref(false)
@@ -618,6 +750,13 @@ const currentIsHtml = computed(() => {
 })
 const currentIsYaml = computed(() => {
   return workspace.currentFile?.path.toLowerCase().endsWith('.yaml') || false
+})
+const showDocumentSidebar = computed(() => {
+  return Boolean(
+    workspace.currentFile
+    && !focusMode.value
+    && (comments.list.length > 0 || commentDraft.value || translationState.value !== 'idle')
+  )
 })
 const openAiConfigComplete = computed(() => {
   return Boolean(openAiBaseUrl.value.trim() && openAiModel.value.trim() && openAiApiKey.value.trim())
@@ -683,6 +822,74 @@ function readOpenAiSetting(name: 'baseUrl' | 'model') {
   }
 }
 
+function readSidebarWidths() {
+  const fallback = { workspace: 256, document: 352 }
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(sidebarStorageKey) || '')
+    return {
+      workspace: clampSidebarWidth(stored.workspace, WORKSPACE_SIDEBAR_MIN, WORKSPACE_SIDEBAR_MAX, fallback.workspace),
+      document: clampSidebarWidth(stored.document, DOCUMENT_SIDEBAR_MIN, DOCUMENT_SIDEBAR_MAX, fallback.document),
+    }
+  } catch {
+    return fallback
+  }
+}
+
+function clampSidebarWidth(value: unknown, min: number, max: number, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback
+}
+
+function persistSidebarWidths() {
+  try {
+    window.localStorage.setItem(sidebarStorageKey, JSON.stringify({ workspace: workspaceSidebarWidth.value, document: documentSidebarWidth.value }))
+  } catch {
+    // Keep the active-session widths when browser storage is unavailable.
+  }
+}
+
+function resizeSidebar(kind: ResizableSidebar, width: number) {
+  if (kind === 'workspace') {
+    workspaceSidebarWidth.value = clampSidebarWidth(width, WORKSPACE_SIDEBAR_MIN, WORKSPACE_SIDEBAR_MAX, workspaceSidebarWidth.value)
+  } else {
+    documentSidebarWidth.value = clampSidebarWidth(width, DOCUMENT_SIDEBAR_MIN, DOCUMENT_SIDEBAR_MAX, documentSidebarWidth.value)
+  }
+}
+
+function startSidebarResize(kind: ResizableSidebar, event: PointerEvent) {
+  if (event.button !== 0) return
+  removeSidebarResizeListeners?.()
+  event.preventDefault()
+  const startX = event.clientX
+  const startWidth = kind === 'workspace' ? workspaceSidebarWidth.value : documentSidebarWidth.value
+  const onMove = (move: PointerEvent) => resizeSidebar(kind, startWidth + (kind === 'workspace' ? move.clientX - startX : startX - move.clientX))
+  const onEnd = () => {
+    removeSidebarResizeListeners?.()
+    persistSidebarWidths()
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onEnd, { once: true })
+  removeSidebarResizeListeners = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onEnd)
+    removeSidebarResizeListeners = null
+  }
+}
+
+function resizeSidebarWithKeyboard(kind: ResizableSidebar, event: KeyboardEvent) {
+  const increase = kind === 'workspace' ? 'ArrowRight' : 'ArrowLeft'
+  const decrease = kind === 'workspace' ? 'ArrowLeft' : 'ArrowRight'
+  const min = kind === 'workspace' ? WORKSPACE_SIDEBAR_MIN : DOCUMENT_SIDEBAR_MIN
+  const max = kind === 'workspace' ? WORKSPACE_SIDEBAR_MAX : DOCUMENT_SIDEBAR_MAX
+  const current = kind === 'workspace' ? workspaceSidebarWidth.value : documentSidebarWidth.value
+  if (event.key === 'Home') resizeSidebar(kind, min)
+  else if (event.key === 'End') resizeSidebar(kind, max)
+  else if (event.key === increase) resizeSidebar(kind, current + 16)
+  else if (event.key === decrease) resizeSidebar(kind, current - 16)
+  else return
+  event.preventDefault()
+  persistSidebarWidths()
+}
+
 function persistOpenAiSettings() {
   try {
     for (const [name, value] of [
@@ -698,6 +905,25 @@ function persistOpenAiSettings() {
   }
 }
 
+async function loadOpenAiApiKey() {
+  try {
+    openAiApiKey.value = (await invoke<string | null>('load_openai_api_key')) || ''
+  } catch {
+    // Keep the empty field when the user configuration file is unavailable.
+  }
+}
+
+async function persistOpenAiApiKey() {
+  try {
+    const apiKey = openAiApiKey.value.trim()
+    if (!apiKey) return
+    await invoke('save_openai_api_key', { apiKey })
+    openAiConfigError.value = null
+  } catch (error) {
+    openAiConfigError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
 function openAiConnectionPayload() {
   const baseUrl = openAiBaseUrl.value.trim()
   const apiKey = openAiApiKey.value.trim()
@@ -707,10 +933,12 @@ function openAiConnectionPayload() {
   return { baseUrl, apiKey }
 }
 
-function saveOpenAiConfiguration() {
+async function saveOpenAiConfiguration() {
   try {
     openAiConnectionPayload()
     persistOpenAiSettings()
+    await persistOpenAiApiKey()
+    if (openAiConfigError.value) return
     openAiConfigError.value = null
     openAiConfigMessage.value = t('settingsSaved')
   } catch (error) {
@@ -727,7 +955,9 @@ async function testOpenAiConnection() {
     openAiConfigMessage.value = null
     const result = await invoke<{ modelCount: number }>('test_openai_compatible_connection', {
       baseUrl,
+      model: openAiModel.value.trim(),
       apiKey,
+      verifyChat: false,
     })
     openAiConfigMessage.value = t('connectedModels', { count: result.modelCount })
   } catch (error) {
@@ -821,7 +1051,7 @@ async function openFolder() {
     const selectedPath = Array.isArray(selected) ? selected[0] : selected
     if (!selectedPath) return
 
-    if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-workspace'))) return
+    if (!(await protectTabs('switch-workspace'))) return
     if (!(await workspace.loadFolder(selectedPath))) {
       throw new Error(t('folderReadError'))
     }
@@ -835,14 +1065,105 @@ async function openFolder() {
   }
 }
 
+const tabEditors = new Map<string, NonNullable<typeof editorRef.value>>()
+const tabHeadings = new Map<string, OutlineHeading[]>()
+function setTabEditor(path: string, editor: NonNullable<typeof editorRef.value> | null) {
+  if (editor) tabEditors.set(path, editor)
+  else { tabEditors.delete(path); tabHeadings.delete(path) }
+  if (workspace.currentFile?.path === path) editorRef.value = editor
+}
+async function protectTabs(action: 'switch-workspace' | 'close-window') {
+  for (const editor of tabEditors.values()) if (!(await editor.requestDiscardChanges(action))) return false
+  return true
+}
+async function closeTab(path: string) {
+  if (isMarkdownTranslating.value) return
+  const editor = tabEditors.get(path)
+  if (editor && !(await editor.requestDiscardChanges('switch-file'))) return
+  workspace.closeTab(path); tabEditors.delete(path); tabHeadings.delete(path)
+  const current = workspace.currentFile
+  editorRef.value = current ? tabEditors.get(current.path) || null : null
+  documentHeadings.value = current ? tabHeadings.get(current.path) || [] : []
+  if (current && workspace.folderPath) await comments.loadComments(workspace.folderPath, current.path, current.content)
+  else comments.clearCurrentFile()
+}
+
 async function openFile(filePath: string) {
   if (isMarkdownTranslating.value) return
   if (!workspace.folderPath) return
   if (workspace.currentFile?.path === filePath) return
-  if (editorRef.value && !(await editorRef.value.requestDiscardChanges('switch-file'))) return
 
   if (!(await workspace.openFile(filePath))) return
+  editorRef.value = tabEditors.get(filePath) || null
+  documentHeadings.value = tabHeadings.get(filePath) || []
   await comments.loadComments(workspace.folderPath, filePath, workspace.currentFile?.content)
+}
+
+function openCreateMarkdownDialog() {
+  if (!workspace.folderPath || isMarkdownTranslating.value) return
+  newMarkdownName.value = ''
+  newMarkdownError.value = null
+  showCreateMarkdown.value = true
+}
+
+function closeCreateMarkdownDialog() {
+  if (isCreatingMarkdown.value) return
+  showCreateMarkdown.value = false
+  newMarkdownError.value = null
+}
+
+async function createMarkdownFile() {
+  const workspacePath = workspace.folderPath
+  const name = newMarkdownName.value.trim()
+  if (!workspacePath || !name || isCreatingMarkdown.value) return
+
+  isCreatingMarkdown.value = true
+  newMarkdownError.value = null
+  try {
+    const filePath = await invoke<string>('create_markdown_file', { workspacePath, name })
+    if (!(await workspace.refreshFiles())) throw new Error(t('refreshFiles'))
+    showCreateMarkdown.value = false
+    await openFile(filePath)
+  } catch (error) {
+    newMarkdownError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    isCreatingMarkdown.value = false
+  }
+}
+
+async function deleteCurrentMarkdownFile() {
+  const currentFile = workspace.currentFile
+  const workspacePath = workspace.folderPath
+  if (!currentFile || !workspacePath || !currentIsMarkdown.value || isDeletingMarkdown.value) return
+
+  const fileName = currentFile.path.split('/').pop() || currentFile.path
+  const approved = isE2E
+    ? confirm(t('deleteMarkdownConfirm', { name: fileName }))
+    : await ask(t('deleteMarkdownConfirm', { name: fileName }), { title: t('deleteMarkdownFile'), kind: 'warning' })
+  if (!approved) return
+
+  const editor = tabEditors.get(currentFile.path)
+  if (editor && !(await editor.requestDiscardChanges('switch-file'))) return
+
+  isDeletingMarkdown.value = true
+  try {
+    await invoke('delete_markdown_file', { workspacePath, path: currentFile.path })
+    workspace.closeTab(currentFile.path)
+    tabEditors.delete(currentFile.path)
+    tabHeadings.delete(currentFile.path)
+    const nextFile = workspace.currentFile
+    editorRef.value = nextFile ? tabEditors.get(nextFile.path) || null : null
+    documentHeadings.value = nextFile ? tabHeadings.get(nextFile.path) || [] : []
+    if (nextFile) await comments.loadComments(workspacePath, nextFile.path, nextFile.content)
+    else comments.clearCurrentFile()
+    if (!(await workspace.refreshFiles())) workspaceError.value = t('refreshFiles')
+  } catch (error) {
+    workspaceError.value = t('deleteMarkdownFailed', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+  } finally {
+    isDeletingMarkdown.value = false
+  }
 }
 
 async function openFileFromSearch(filePath: string) {
@@ -866,14 +1187,17 @@ function toggleDisplayMode() {
   displayMode.value = displayMode.value === 'filename' ? 'title' : 'filename'
 }
 
+function locateComment(id: string) {
+  const comment = comments.list.find(item => item.id === id)
+  if (comment) editorRef.value?.scrollToSource?.(comment.anchor.offset, comment.anchor.length)
+}
 function handleOutlineSelect(heading: OutlineHeading) {
-  editorRef.value?.scrollToHeading?.(heading.text, heading.level)
+  editorRef.value?.scrollToHeading?.(heading.text, heading.level, heading.line)
 }
 
-async function saveFile(content: string) {
-  const filePath = workspace.currentFile?.path
+async function saveTabFile(filePath: string, content: string) {
   const folderPath = workspace.folderPath
-  await workspace.saveCurrentFile(content)
+  await workspace.saveFile(filePath, content)
   if (folderPath && filePath && workspace.folderPath === folderPath && workspace.currentFile?.path === filePath) {
     await comments.refreshCurrentFileHash(folderPath, filePath)
   }
@@ -889,7 +1213,7 @@ async function saveMarkdownBeforeHtmlGeneration(sourcePath: string) {
 }
 
 async function openGeneratedHtml(workspacePath: string, outputPath: string) {
-  if (!(await workspace.loadFolder(workspacePath))) {
+  if (!(await workspace.refreshFiles())) {
     throw new Error(t('refreshFiles'))
   }
   comments.clearCurrentFile()
@@ -909,6 +1233,7 @@ async function generateHtml() {
 async function exportHtml() {
   const workspacePath = workspace.folderPath
   const sourceFile = workspace.currentFile
+  const sourceEditor = editorRef.value
   if (!workspacePath || !sourceFile || !currentIsMarkdown.value) return
 
   isExporting.value = true
@@ -925,13 +1250,12 @@ async function exportHtml() {
 
     if (!outputPath || typeof outputPath !== 'string') return
 
-    await invoke('export_as_html', {
-      workspacePath,
-      filePath: sourceFile.path,
-      outputPath,
-      cssContent: null,
-      includeMarkdownSource: includeMarkdownSource.value,
-    })
+    await sourceEditor?.saveCurrentContent()
+    const sourceContent = sourceEditor?.getCurrentContent() ?? sourceFile.content
+
+    const { exportMarkdown } = await import('./lib/markdown/export')
+    const html = await exportMarkdown(sourceContent, sourceFile.path, workspacePath, includeMarkdownSource.value)
+    await invoke('export_rendered_html', { workspacePath, outputPath, html })
     await openGeneratedHtml(workspacePath, outputPath)
     exportMessage.value = t('htmlCreated')
   } catch (error) {
@@ -1006,7 +1330,7 @@ async function translateMarkdownFile() {
       ...(openaiConfig ? { openaiConfig } : {}),
     })
 
-    if (!(await workspace.loadFolder(workspacePath))) {
+    if (!(await workspace.refreshFiles())) {
       throw new Error(t('refreshFiles'))
     }
     comments.clearCurrentFile()
@@ -1029,8 +1353,14 @@ async function translateMarkdownFile() {
   }
 }
 
-async function handleCreateComment(anchor: any, content: string) {
-  if (!workspace.currentFile) return
+function handleStartComment(anchor: CommentAnchor, text: string) {
+  focusMode.value = false
+  commentDraft.value = { anchor, text }
+  activeSidebarPanel.value = 'comments'
+}
+
+async function handleCreateComment(anchor: CommentAnchor, content: string) {
+  if (!workspace.currentFile) return false
 
   try {
     await comments.saveComment({
@@ -1041,12 +1371,31 @@ async function handleCreateComment(anchor: any, content: string) {
     })
 
     console.log('Comment created')
+    return true
   } catch (error) {
     console.error('Failed to create comment:', error)
+    return false
+  }
+}
+
+async function submitComment(content: string) {
+  const draft = commentDraft.value
+  if (!draft || isSubmittingComment.value) return
+
+  isSubmittingComment.value = true
+  try {
+    if (await handleCreateComment(draft.anchor, content)) {
+      commentDraft.value = null
+    }
+  } finally {
+    isSubmittingComment.value = false
   }
 }
 
 async function handleTranslate(selection: Selection) {
+  focusMode.value = false
+  const request = ++translationRequest
+  activeSidebarPanel.value = 'translation'
   translationOriginal.value = selection.text
   translationTranslated.value = ''
   translationError.value = null
@@ -1059,14 +1408,29 @@ async function handleTranslate(selection: Selection) {
       text: selection.text,
       ...(openaiConfig ? { openaiConfig } : {}),
     })
+    if (request !== translationRequest) return
     translationOriginal.value = result.original
     translationTranslated.value = result.translated
     translationState.value = 'success'
   } catch (error) {
+    if (request !== translationRequest) return
     console.error('Translation failed:', error)
     translationError.value = error instanceof Error ? error.message : String(error)
     translationState.value = 'error'
   }
+}
+
+function closeTranslationSidebar() {
+  resetTranslationSidebar()
+  activeSidebarPanel.value = 'comments'
+}
+
+function resetTranslationSidebar() {
+  translationRequest += 1
+  translationState.value = 'idle'
+  translationOriginal.value = ''
+  translationTranslated.value = ''
+  translationError.value = null
 }
 
 function documentAssistantComments(): DocumentAssistantComment[] {
@@ -1226,8 +1590,9 @@ function handleKeyDown(event: KeyboardEvent) {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleKeyDown)
+  void loadOpenAiApiKey()
   const unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
-    if (editorRef.value && !(await editorRef.value.requestDiscardChanges('close-window'))) {
+    if (!(await protectTabs('close-window'))) {
       event.preventDefault()
     }
   })
@@ -1237,6 +1602,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   appUnmounted = true
+  removeSidebarResizeListeners?.()
   window.removeEventListener('keydown', handleKeyDown)
   unlistenCloseRequested?.()
 })

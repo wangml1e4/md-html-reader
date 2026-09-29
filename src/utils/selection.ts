@@ -18,6 +18,8 @@ export function getSelection(): Selection | null {
   if (!selection || selection.rangeCount === 0) return null
 
   const range = selection.getRangeAt(0)
+  const root = document.querySelector('.milkdown-container')
+  if (!root || !root.contains(range.commonAncestorContainer)) return null
   const text = selection.toString().trim()
 
   if (text.length === 0) return null

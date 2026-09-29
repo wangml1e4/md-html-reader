@@ -24,8 +24,10 @@ export const useCommentsStore = defineStore('comments', () => {
   const currentWorkspacePath = ref<string | null>(null)
   const currentFileHash = ref<string | null>(null)
   const currentFilePath = ref<string | null>(null)
+  let loadRequest = 0
 
   function clearCurrentFile() {
+    ++loadRequest
     list.value = []
     currentWorkspacePath.value = null
     currentFileHash.value = null
@@ -33,25 +35,30 @@ export const useCommentsStore = defineStore('comments', () => {
   }
 
   async function loadComments(workspacePath: string, filePath: string, currentContent?: string) {
+    clearCurrentFile()
+    const request = loadRequest
     try {
       const hash = await invoke<string>('calculate_file_hash', {
         workspacePath,
         path: filePath,
       })
-      currentWorkspacePath.value = workspacePath
-      currentFileHash.value = hash
-      currentFilePath.value = filePath
+      if (request !== loadRequest) return
 
       const comments = await invoke<Comment[]>('load_comments', {
         workspacePath,
         fileHash: hash,
         filePath: filePath
       })
+      if (request !== loadRequest) return
+      currentWorkspacePath.value = workspacePath
+      currentFileHash.value = hash
+      currentFilePath.value = filePath
       list.value = currentContent
         ? relocateComments(comments, currentContent)
         : [...comments]
     } catch (error) {
-      console.error('Failed to load comments:', error)
+      if (request !== loadRequest) return
+      console.error('加载评论失败:', error)
       clearCurrentFile()
     }
   }
@@ -76,17 +83,20 @@ export const useCommentsStore = defineStore('comments', () => {
     filePath = currentFilePath.value,
   ) {
     if (!workspacePath || !filePath) return
+    const request = loadRequest
 
     const hash = await invoke<string>('calculate_file_hash', {
       workspacePath,
       path: filePath,
     })
+    if (request !== loadRequest) return
     currentWorkspacePath.value = workspacePath
     currentFileHash.value = hash
     currentFilePath.value = filePath
   }
 
   async function saveComment(comment: Omit<Comment, 'id' | 'createdAt' | 'updatedAt'>) {
+    const request = loadRequest
     if (!currentWorkspacePath.value || !currentFileHash.value || !currentFilePath.value) {
       throw new Error(t('noCommentFileLoaded'))
     }
@@ -106,7 +116,7 @@ export const useCommentsStore = defineStore('comments', () => {
         comment: newComment,
       })
 
-      list.value.push(newComment)
+      if (request === loadRequest) list.value.push(newComment)
       return newComment
     } catch (error) {
       console.error('Failed to save comment:', error)

@@ -1,6 +1,6 @@
 <template>
-  <div class="h-full overflow-auto bg-white border-r border-gray-200">
-    <div class="px-3 py-2 border-b border-gray-200 text-sm font-medium text-gray-700">
+  <div @scroll="scrollTop = ($event.target as HTMLElement).scrollTop" class="h-full overflow-auto bg-[#fafafc] border-r border-gray-200">
+    <div class="px-4 py-3 border-b border-gray-200 text-xs font-semibold text-gray-700">
       {{ t('outline') }}
     </div>
 
@@ -8,13 +8,13 @@
       {{ t('noHeadings') }}
     </div>
 
-    <div v-else class="p-2 space-y-1">
+    <div v-else class="p-2" :style="{ paddingTop: `${start * 28 + 8}px`, paddingBottom: `${Math.max(0, headings.length - start - 50) * 28 + 8}px` }">
       <button
-        v-for="heading in headings"
+        v-for="heading in headings.slice(start, start + 50)"
         :key="`${heading.line}-${heading.text}`"
-        class="w-full text-left text-xs text-gray-700 hover:bg-blue-50 rounded px-2 py-1 truncate"
+        class="apple-outline-item h-7 block w-full text-left text-xs text-gray-700 px-2 py-1 truncate"
         :style="{ paddingLeft: `${heading.level * 0.5}rem` }"
-        :title="heading.text"
+        :title="heading.text" :data-heading-line="heading.line"
         @click="emit('select', heading)"
       >
         {{ heading.text }}
@@ -24,48 +24,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { t } from '../i18n'
 
-export interface OutlineHeading {
-  level: number
-  text: string
-  line: number
-}
+import { renderMarkdown, type OutlineHeading } from '../lib/markdown/renderer'
 
 const props = defineProps<{
   content: string
+  headings?: OutlineHeading[]
 }>()
 
 const emit = defineEmits<{
   select: [heading: OutlineHeading]
 }>()
 
-const headings = computed(() => parseHeadings(props.content))
-
-function parseHeadings(content: string): OutlineHeading[] {
-  return content
-    .split('\n')
-    .map((line, index) => parseHeading(line, index + 1))
-    .filter((heading): heading is OutlineHeading => heading !== null)
-}
-
-function parseHeading(line: string, lineNumber: number): OutlineHeading | null {
-  const trimmed = line.trimStart()
-  const level = trimmed.match(/^#{1,6}(?=\s)/)?.[0].length
-  if (!level) return null
-
-  const text = trimmed
-    .slice(level)
-    .trim()
-    .replace(/\s+#+$/, '')
-
-  if (!text) return null
-
-  return {
-    level,
-    text,
-    line: lineNumber,
-  }
-}
+const scrollTop = ref(0)
+const start = computed(() => Math.max(0, Math.floor(scrollTop.value / 28) - 5))
+const headings = computed(() => props.headings ?? renderMarkdown(props.content).headings)
 </script>

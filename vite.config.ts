@@ -6,24 +6,21 @@ export default defineConfig({
   plugins: [vue()],
 
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'editor-framework': [
-            '@milkdown/core',
-            '@milkdown/ctx',
-            '@milkdown/prose',
-            '@milkdown/vue',
-          ],
-          'editor-presets': [
-            '@milkdown/preset-commonmark',
-            '@milkdown/preset-gfm',
-          ],
-          'editor-plugins': [
-            '@milkdown/plugin-history',
-            '@milkdown/plugin-listener',
-            '@milkdown/plugin-prism',
-          ],
+        onlyExplicitManualChunks: true,
+        // Shared CommonJS helpers must not pull the lazy editor into reading mode.
+        manualChunks(id) {
+          if (id.includes('commonjsHelpers')) return 'runtime'
+          const mermaid = id.match(/mermaid\/dist\/chunks\/mermaid\.core\/([^/]+)\.mjs$/)
+          if (mermaid) return `mermaid-${mermaid[1]}`
+          const cm = id.match(/node_modules\/(@codemirror\/[^/]+|@lezer\/[^/]+)\//)
+          if (cm) return cm[1].replace(/[@/]/g, '-')
+          if (id.includes('/node_modules/elkjs/')) return 'diagram-layout-elk'
+          if (id.includes('/node_modules/cytoscape/')) return 'diagram-layout-cytoscape'
+          if (id.includes('/node_modules/@milkdown/prose/') || id.includes('/node_modules/prosemirror-')) return 'richtext-prosemirror'
+
         },
       },
     },

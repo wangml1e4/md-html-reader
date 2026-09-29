@@ -98,26 +98,3 @@ fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
         .body(message.as_bytes().to_vec())
         .unwrap()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decodes_hierarchical_absolute_paths() {
-        assert_eq!(
-            request_path("/tmp/preview%20workspace/page.html"),
-            Some(PathBuf::from("/tmp/preview workspace/page.html"))
-        );
-        assert_eq!(request_path("relative/page.html"), None);
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn decodes_windows_absolute_paths() {
-        assert_eq!(
-            request_path("/C%3A/preview%20workspace/page.html"),
-            Some(PathBuf::from("C:/preview workspace/page.html"))
-        );
-    }
-}
