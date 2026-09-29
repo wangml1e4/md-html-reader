@@ -6,7 +6,8 @@ use std::path::Path;
 use tauri::{command, AppHandle, Manager};
 
 use crate::path_guard::{
-    document_file_in_workspace, is_ignored_name, is_supported_document_path, workspace_root,
+    document_file_in_workspace, is_html_document_path, is_ignored_name, is_supported_document_path,
+    workspace_root,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,168 +21,14 @@ pub struct FileItem {
     pub children: Option<Vec<FileItem>>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_test_root(name: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "md-html-reader-fs-{}-{}-{}",
-            name,
-            std::process::id(),
-            nanos
-        ))
-    }
-
-    #[test]
-    fn read_and_write_require_paths_inside_workspace() {
-        let workspace = unique_test_root("workspace");
-        let outside = unique_test_root("outside");
-        fs::create_dir_all(&workspace).unwrap();
-        fs::create_dir_all(&outside).unwrap();
-
-        let allowed = workspace.join("note.md");
-        let blocked = outside.join("secret.md");
-        fs::write(&allowed, "allowed").unwrap();
-        fs::write(&blocked, "blocked").unwrap();
-
-        let workspace = workspace.to_string_lossy().to_string();
-        let allowed = allowed.to_string_lossy().to_string();
-        let blocked = blocked.to_string_lossy().to_string();
-
-        assert_eq!(
-            read_file(workspace.clone(), allowed.clone()).unwrap(),
-            "allowed"
-        );
-        assert!(read_file(workspace.clone(), blocked.clone()).is_err());
-
-        write_file(workspace.clone(), allowed.clone(), "updated".to_string()).unwrap();
-        assert_eq!(fs::read_to_string(&allowed).unwrap(), "updated");
-        assert!(write_file(workspace, blocked.clone(), "leaked".to_string()).is_err());
-        assert_eq!(fs::read_to_string(blocked).unwrap(), "blocked");
-    }
-
-    #[test]
-    fn list_files_skips_hidden_special_and_symlink_entries() {
-        let workspace = unique_test_root("scan");
-        fs::create_dir_all(workspace.join("node_modules")).unwrap();
-        fs::create_dir_all(workspace.join(".hidden")).unwrap();
-        fs::write(workspace.join("visible.md"), "visible").unwrap();
-        fs::write(workspace.join("node_modules").join("dep.md"), "dep").unwrap();
-        fs::write(workspace.join(".hidden").join("secret.md"), "secret").unwrap();
-
-        #[cfg(unix)]
-        {
-            let outside = unique_test_root("outside-link");
-            fs::create_dir_all(&outside).unwrap();
-            fs::write(outside.join("linked.md"), "linked").unwrap();
-            std::os::unix::fs::symlink(outside.join("linked.md"), workspace.join("linked.md"))
-                .unwrap();
-        }
-
-        let files = list_workspace_files(workspace.to_string_lossy().to_string()).unwrap();
-        let names: Vec<_> = files.iter().map(|item| item.name.as_str()).collect();
-
-        assert_eq!(names, vec!["visible.md"]);
-    }
-
-    #[test]
-    fn list_files_extracts_document_titles() {
-        let workspace = unique_test_root("titles");
-        fs::create_dir_all(&workspace).unwrap();
-        fs::write(
-            workspace.join("note.md"),
-            "intro\n\n# Markdown Title\n\ncontent",
-        )
-        .unwrap();
-        fs::write(
-            workspace.join("page.html"),
-            "<!doctype html><html><head><title>HTML Title</title></head><body><h1>Fallback</h1></body></html>",
-        )
-        .unwrap();
-        fs::write(
-            workspace.join("fallback.html"),
-            "<!doctype html><html><body><h1>Heading Fallback</h1></body></html>",
-        )
-        .unwrap();
-
-        let files = list_workspace_files(workspace.to_string_lossy().to_string()).unwrap();
-        let markdown = files.iter().find(|item| item.name == "note.md").unwrap();
-        let html = files.iter().find(|item| item.name == "page.html").unwrap();
-        let fallback = files
-            .iter()
-            .find(|item| item.name == "fallback.html")
-            .unwrap();
-
-        assert_eq!(markdown.title.as_deref(), Some("Markdown Title"));
-        assert_eq!(html.title.as_deref(), Some("HTML Title"));
-        assert_eq!(fallback.title.as_deref(), Some("Heading Fallback"));
-    }
-
-    #[test]
-    fn list_files_includes_yaml_documents() {
-        let workspace = unique_test_root("yaml");
-        fs::create_dir_all(&workspace).unwrap();
-        fs::write(workspace.join("config.yaml"), "enabled: true").unwrap();
-
-        let files = list_workspace_files(workspace.to_string_lossy().to_string()).unwrap();
-
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0].name, "config.yaml");
-        assert_eq!(files[0].extension.as_deref(), Some(".yaml"));
-    }
-
-    #[test]
-    fn read_file_decodes_declared_legacy_html() {
-        let workspace = unique_test_root("legacy-encoding");
-        fs::create_dir_all(&workspace).unwrap();
-        let page = workspace.join("legacy.htm");
-        let (encoded, _, _) = encoding_rs::GBK
-            .encode("<html><head><meta charset=\"gbk\"></head><body>中文页面</body></html>");
-        fs::write(&page, encoded.as_ref()).unwrap();
-
-        let content = read_file(
-            workspace.to_string_lossy().to_string(),
-            page.to_string_lossy().to_string(),
-        )
-        .unwrap();
-
-        assert!(content.contains("中文页面"));
-    }
-
-    #[test]
-    fn read_file_decodes_utf16_bom() {
-        let workspace = unique_test_root("utf16-encoding");
-        fs::create_dir_all(&workspace).unwrap();
-        let page = workspace.join("legacy.xhtml");
-        let encoded = "<html><body>UTF-16 页面</body></html>"
-            .encode_utf16()
-            .flat_map(u16::to_le_bytes)
-            .collect::<Vec<_>>();
-        let mut bytes = vec![0xFF, 0xFE];
-        bytes.extend_from_slice(&encoded);
-        fs::write(&page, bytes).unwrap();
-
-        let content = read_file(
-            workspace.to_string_lossy().to_string(),
-            page.to_string_lossy().to_string(),
-        )
-        .unwrap();
-
-        assert!(content.contains("UTF-16 页面"));
-    }
-}
 
 #[command]
-pub fn list_files(app: AppHandle, path: String) -> Result<Vec<FileItem>, String> {
+pub async fn list_files(app: AppHandle, path: String) -> Result<Vec<FileItem>, String> {
     let root_path = workspace_root(&path)?;
-    let files = scan_directory(&root_path)?;
+    let scan_path = root_path.clone();
+    let files = tauri::async_runtime::spawn_blocking(move || scan_directory(&scan_path))
+        .await
+        .map_err(|error| format!("扫描工作区失败: {}", error))??;
     app.state::<tauri::Scopes>()
         .allow_directory(&root_path, true)
         .map_err(|error| format!("授权 HTML 预览资源失败: {}", error))?;
@@ -189,7 +36,6 @@ pub fn list_files(app: AppHandle, path: String) -> Result<Vec<FileItem>, String>
     Ok(files)
 }
 
-#[cfg(test)]
 pub fn list_workspace_files(path: String) -> Result<Vec<FileItem>, String> {
     let root_path = workspace_root(&path)?;
     scan_directory(&root_path)
@@ -257,10 +103,103 @@ pub fn read_file(workspace_path: String, path: String) -> Result<String, String>
     read_document_content(&path)
 }
 
+fn replace_document_file(
+    path: &Path,
+    content: &[u8],
+    original: &fs::File,
+    expected_bytes: &[u8],
+) -> Result<(), String> {
+    use std::io::Write;
+    let parent = path.parent().ok_or("无法获取文件所在目录")?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".markdown-reader-")
+        .tempfile_in(parent)
+        .map_err(|e| e.to_string())?;
+    temporary
+        .as_file()
+        .set_permissions(original.metadata().map_err(|e| e.to_string())?.permissions())
+        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::fd::AsRawFd;
+        let result = unsafe {
+            libc::fcopyfile(
+                original.as_raw_fd(),
+                temporary.as_file().as_raw_fd(),
+                std::ptr::null_mut(),
+                libc::COPYFILE_ACL | libc::COPYFILE_XATTR,
+            )
+        };
+        if result != 0 {
+            return Err(format!(
+                "保留文件元数据失败: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+    }
+    temporary
+        .write_all(content)
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|e| e.to_string())?;
+    if fs::read(path).map_err(|e| e.to_string())? != expected_bytes {
+        return Err(
+            "文件已被外部程序修改，未覆盖磁盘。请保留当前草稿并重新打开文件核对差异。".into(),
+        );
+    }
+    temporary.persist(path).map_err(|e| e.error.to_string())?;
+    Ok(())
+}
+
+fn markdown_file_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    let path = Path::new(name);
+    let is_single_file_name = path.components().count() == 1
+        && path.file_name().and_then(|file_name| file_name.to_str()) == Some(name)
+        && !name.contains(['/', '\\']);
+
+    if name.is_empty() || !is_single_file_name || is_ignored_name(name) {
+        return Err("文件名无效。请使用工作区根目录下的普通文件名。".to_string());
+    }
+
+    if name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.eq_ignore_ascii_case("md"))
+        .unwrap_or(false)
+    {
+        Ok(name.to_string())
+    } else {
+        Ok(format!("{}.md", name))
+    }
+}
+
 #[command]
-pub fn write_file(workspace_path: String, path: String, content: String) -> Result<(), String> {
+pub fn create_markdown_file(workspace_path: String, name: String) -> Result<String, String> {
+    let root = workspace_root(&workspace_path)?;
+    let file_name = markdown_file_name(&name)?;
+    let path = root.join(file_name);
+
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| format!("新建 Markdown 文件失败: {}", error))?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn delete_markdown_file(workspace_path: String, path: String) -> Result<(), String> {
     let path = document_file_in_workspace(&workspace_path, &path)?;
-    fs::write(&path, content).map_err(|e| format!("写入文件失败: {}", e))
+    let is_markdown = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"));
+
+    if !is_markdown {
+        return Err("只允许删除 Markdown 文件".to_string());
+    }
+
+    fs::remove_file(&path).map_err(|error| format!("删除 Markdown 文件失败: {}", error))
 }
 
 fn extract_document_title(path: &Path) -> Option<String> {
@@ -315,6 +254,81 @@ fn decode_document_bytes(bytes: &[u8]) -> String {
     encoding.decode(bytes).0.into_owned()
 }
 
+fn encode_document_bytes(path: &Path, original: &[u8], content: &str) -> Result<Vec<u8>, String> {
+    let invalid = || "文件编码无法无损识别，未覆盖磁盘。请先备份并转换为 UTF-8。".to_string();
+    if let Some(bytes) = original.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        std::str::from_utf8(bytes).map_err(|_| invalid())?;
+        return Ok([&[0xEF, 0xBB, 0xBF][..], content.as_bytes()].concat());
+    }
+    if let Some(bytes) = original.strip_prefix(&[0xFF, 0xFE]) {
+        if UTF_16LE.decode_without_bom_handling(bytes).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, true, true));
+    }
+    if let Some(bytes) = original.strip_prefix(&[0xFE, 0xFF]) {
+        if UTF_16BE.decode_without_bom_handling(bytes).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, false, true));
+    }
+    let declared = is_html_document_path(path)
+        .then(|| declared_encoding(original))
+        .flatten();
+    if std::str::from_utf8(original).is_ok()
+        && !(original.is_ascii() && declared.is_some_and(|encoding| encoding != UTF_8))
+    {
+        return Ok(content.as_bytes().to_vec());
+    }
+    if looks_like_utf16le(original) {
+        if UTF_16LE.decode_without_bom_handling(original).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, true, false));
+    }
+    if looks_like_utf16be(original) {
+        if UTF_16BE.decode_without_bom_handling(original).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, false, false));
+    }
+    let encoding = declared.ok_or_else(invalid)?;
+    if encoding == UTF_8 || encoding.decode_without_bom_handling(original).1 {
+        return Err(invalid());
+    }
+    if encoding == UTF_16LE {
+        return Ok(encode_utf16_bytes(content, true, false));
+    }
+    if encoding == UTF_16BE {
+        return Ok(encode_utf16_bytes(content, false, false));
+    }
+    let (bytes, _, had_errors) = encoding.encode(content);
+    if had_errors {
+        return Err("新增内容无法用原文件编码保存，未覆盖磁盘。请先将文件转换为 UTF-8。".into());
+    }
+    Ok(bytes.into_owned())
+}
+
+fn encode_utf16_bytes(content: &str, little_endian: bool, bom: bool) -> Vec<u8> {
+    let mut bytes = if bom {
+        if little_endian {
+            vec![0xFF, 0xFE]
+        } else {
+            vec![0xFE, 0xFF]
+        }
+    } else {
+        Vec::new()
+    };
+    for code_unit in content.encode_utf16() {
+        bytes.extend_from_slice(&if little_endian {
+            code_unit.to_le_bytes()
+        } else {
+            code_unit.to_be_bytes()
+        });
+    }
+    bytes
+}
+
 fn looks_like_utf16le(bytes: &[u8]) -> bool {
     let pairs = bytes.chunks_exact(2);
     let pair_count = pairs.len();
@@ -329,8 +343,23 @@ fn looks_like_utf16be(bytes: &[u8]) -> bool {
 
 fn declared_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
     let sample = String::from_utf8_lossy(&bytes[..bytes.len().min(8 * 1024)]).to_ascii_lowercase();
-    let charset_start = sample.find("charset")? + "charset".len();
-    let value = sample[charset_start..]
+    let after_label = sample
+        .trim_start()
+        .strip_prefix("<?xml")
+        .and_then(|xml| xml.split_once("?>"))
+        .and_then(|(declaration, _)| {
+            declaration
+                .find("encoding")
+                .map(|index| &declaration[index + "encoding".len()..])
+        })
+        .or_else(|| {
+            sample.split("<meta").skip(1).find_map(|part| {
+                let (tag, _) = part.split_once('>')?;
+                tag.find("charset")
+                    .map(|index| &tag[index + "charset".len()..])
+            })
+        })?;
+    let value = after_label
         .trim_start_matches(|character: char| character.is_ascii_whitespace() || character == '=')
         .trim_start_matches(['\'', '"']);
     let label = value
@@ -385,4 +414,30 @@ fn decode_basic_html_entities(text: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+}
+
+#[command]
+pub fn write_file_checked(
+    workspace_path: String,
+    path: String,
+    content: String,
+    expected_content: String,
+) -> Result<(), String> {
+    let path = document_file_in_workspace(&workspace_path, &path)?;
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    file.lock().map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    if decode_document_bytes(&bytes) != expected_content {
+        return Err(
+            "文件已被外部程序修改，未覆盖磁盘。请保留当前草稿并重新打开文件核对差异。".into(),
+        );
+    }
+
+    let encoded = encode_document_bytes(&path, &bytes, &content)?;
+    replace_document_file(&path, &encoded, &file, &bytes)
 }

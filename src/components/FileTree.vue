@@ -11,10 +11,10 @@
       >
         <button
           @click="toggle(file.path)"
-          class="w-full text-left px-2 py-1 hover:bg-gray-100 rounded flex items-center gap-1"
+          class="apple-file-item w-full text-left"
         >
-          <span class="text-gray-500">{{ isExpanded(file.path) ? '📂' : '📁' }}</span>
-          <span class="text-sm">{{ file.name }}</span>
+          <span class="apple-file-disclosure" aria-hidden="true">{{ isExpanded(file.path) ? '⌄' : '›' }}</span>
+          <span class="text-sm truncate">{{ file.name }}</span>
         </button>
         <div v-if="isExpanded(file.path)" class="ml-4">
           <FileTree
@@ -36,11 +36,11 @@
         :data-file-path="file.path"
         :title="file.path"
         :disabled="disabled"
-        class="w-full text-left px-2 py-1 hover:bg-blue-50 rounded flex items-center gap-1"
+        class="apple-file-item w-full text-left"
         :class="{ 'bg-blue-100': isSelected(file.path), 'disabled:cursor-not-allowed': disabled }"
       >
-        <span class="text-gray-500">{{ getIcon(file.extension) }}</span>
-        <span class="text-sm">{{ getDisplayName(file) }}</span>
+        <span class="apple-file-kind" aria-hidden="true">{{ getFileKind(file.extension) }}</span>
+        <span class="text-sm truncate">{{ getDisplayName(file) }}</span>
       </button>
     </div>
   </div>
@@ -107,13 +107,13 @@ function isSelected(path: string) {
   return (props.currentPath || selected.value) === path
 }
 
-function getIcon(ext?: string) {
-  if (!ext) return '📄'
+function getFileKind(ext?: string) {
+  if (!ext) return 'FILE'
   const normalizedExtension = ext.toLowerCase()
-  if (normalizedExtension === '.md') return '📝'
-  if (['.html', '.htm', '.xhtml'].includes(normalizedExtension)) return '🌐'
-  if (normalizedExtension === '.yaml') return '⚙️'
-  return '📄'
+  if (normalizedExtension === '.md') return 'MD'
+  if (['.html', '.htm', '.xhtml'].includes(normalizedExtension)) return 'HTML'
+  if (normalizedExtension === '.yaml') return 'YAML'
+  return 'FILE'
 }
 
 function getDisplayName(file: FileItem) {

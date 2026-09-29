@@ -22,7 +22,7 @@ APP_BINARY=""
 APP_LOG=""
 MOUNTED=0
 
-cleanup() {
+stop_app() {
   if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
     kill "$APP_PID" 2>/dev/null || true
     for _ in {1..10}; do
@@ -31,9 +31,18 @@ cleanup() {
       fi
       sleep 0.2
     done
-    wait "$APP_PID" 2>/dev/null || true
-    kill -9 "$APP_PID" 2>/dev/null || true
+    if kill -0 "$APP_PID" 2>/dev/null; then
+      kill -9 "$APP_PID" 2>/dev/null || true
+    fi
   fi
+  if [[ -n "$APP_PID" ]]; then
+    wait "$APP_PID" 2>/dev/null || true
+    APP_PID=""
+  fi
+}
+
+cleanup() {
+  stop_app
   if [[ "$MOUNTED" -eq 1 ]]; then
     hdiutil detach "$MOUNT_DIR" >/dev/null 2>&1 || true
   fi
@@ -71,9 +80,7 @@ APP_PID=$!
 for _ in {1..20}; do
   if kill -0 "$APP_PID" 2>/dev/null; then
     echo "Launched $PRODUCT_NAME from copied DMG app with PID $APP_PID"
-    kill "$APP_PID" 2>/dev/null || true
-    wait "$APP_PID" 2>/dev/null || true
-    APP_PID=""
+    stop_app
     exit 0
   fi
   sleep 0.5

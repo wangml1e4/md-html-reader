@@ -51,7 +51,13 @@ export function relocateAnchor(
   newText: string
 ): AnchorRelocateResult {
   // 策略 1：精确匹配 quote
-  const exactMatch = newText.indexOf(anchor.quote)
+  const expectedQuoteStart = Math.max(0, anchor.offset - getCoreStart(anchor))
+  let exactMatch = -1, distance = Infinity
+  if (anchor.quote) for (let found = newText.indexOf(anchor.quote); found !== -1; found = newText.indexOf(anchor.quote, found + 1)) {
+    const delta = Math.abs(found - expectedQuoteStart)
+    if (delta < distance) { exactMatch = found; distance = delta }
+    if (delta === 0) break
+  }
   if (exactMatch !== -1) {
     const offsetInQuote = getCoreStart(anchor)
     return {
@@ -97,11 +103,6 @@ export function relocateAnchor(
  */
 function extractCoreText(anchor: CommentAnchor): string {
   const { quote, length } = anchor
-
-  // 如果 quote 长度不足 50 字符，直接返回全部内容
-  if (quote.length < 50) {
-    return quote
-  }
 
   const start = getCoreStart(anchor)
   const end = Math.min(start + length, quote.length) // 防止超出边界

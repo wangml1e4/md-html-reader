@@ -1,6 +1,6 @@
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-    <section class="max-h-full w-full max-w-6xl overflow-auto rounded-lg bg-white shadow-xl">
+  <div class="apple-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-6">
+    <section class="apple-modal max-h-full w-full max-w-6xl overflow-auto">
       <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
         <div>
           <h2 class="text-lg font-semibold text-gray-900">
@@ -10,7 +10,7 @@
             {{ mode === 'suggestions' ? t('suggestionsHelp') : t('draftHelp') }}
           </p>
         </div>
-        <button class="text-sm text-gray-500 hover:text-gray-700" @click="$emit('close')">{{ t('close') }}</button>
+        <IconButton class="text-gray-500 hover:text-gray-700" icon="close" :label="t('close')" @click="$emit('close')" />
       </header>
 
       <div v-if="mode === 'suggestions'" class="p-5">
@@ -37,13 +37,13 @@
           />
           {{ t('permanentWritePermission', { scope: permissionScope }) }}
         </label>
-        <button
-          class="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+        <IconButton
+          icon="improve"
+          :label="applying ? t('applying') : t('applyAiDraft')"
+          class="apple-primary-button disabled:opacity-50"
           :disabled="applying"
           @click="$emit('apply')"
-        >
-          {{ applying ? t('applying') : t('applyAiDraft') }}
-        </button>
+        />
       </footer>
     </section>
   </div>
@@ -51,6 +51,7 @@
 
 <script setup lang="ts">
 import { t } from '../i18n'
+import IconButton from './IconButton.vue'
 
 defineProps<{
   mode: 'suggestions' | 'optimize'

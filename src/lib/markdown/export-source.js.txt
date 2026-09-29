@@ -1,0 +1,27 @@
+
+      const source = document.getElementById('markdown-source');
+      try {
+        source.textContent = decodeURIComponent(document.body.dataset.markdownSource || '');
+      } catch (_) {
+        source.textContent = 'Could not load the Markdown source.';
+      }
+
+      const readingButton = document.getElementById('show-reading');
+      const sourceButton = document.getElementById('show-source');
+      const compactScreen = () => window.innerWidth <= 900;
+      const setView = (requestedView) => {
+        const view = requestedView === 'split' && compactScreen() ? 'source' : requestedView;
+        layout.dataset.view = view;
+        readingButton.classList.toggle('is-active', view === 'reading');
+        sourceButton.classList.toggle('is-active', view !== 'reading');
+        readingButton.textContent = compactScreen() ? 'Reading' : 'Reading mode';
+        sourceButton.textContent = compactScreen() ? 'Markdown' : 'Split view';
+      };
+      readingButton.addEventListener('click', () => setView('reading'));
+      sourceButton.addEventListener('click', () => setView('split'));
+      window.addEventListener('resize', () => {
+        if (compactScreen() && layout.dataset.view === 'split') setView('source');
+        else if (!compactScreen() && layout.dataset.view === 'source') setView('split');
+        else setView(layout.dataset.view);
+      });
+      setView('reading');

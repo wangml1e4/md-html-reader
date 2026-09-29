@@ -1,9 +1,13 @@
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "load_openai_api_key",
+            "save_openai_api_key",
             "list_files",
             "read_file",
             "write_file",
+            "create_markdown_file",
+            "delete_markdown_file",
             "calculate_file_hash",
             "load_comments",
             "save_comment",
@@ -11,7 +15,10 @@ fn main() {
             "update_comment",
             "search_files",
             "search_content",
-            "export_as_html",
+            "export_rendered_html",
+            "read_export_resource",
+            "mcp_configuration",
+            "write_file_checked",
             "translate_text",
             "test_openai_compatible_connection",
             "fetch_openai_compatible_models",

@@ -5,19 +5,19 @@
         {{ fileName }}
       </span>
 
-      <button
+      <IconButton
+        icon="preview"
+        :label="isOpeningFullPreview ? t('opening') : t('openFullPreview')"
         @click="openFullPreview"
         :disabled="isOpeningFullPreview"
-        class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-      >
-        {{ isOpeningFullPreview ? t('opening') : t('openFullPreview') }}
-      </button>
-      <button
+        class="apple-primary-button disabled:opacity-50"
+      />
+      <IconButton
+        icon="refresh"
+        :label="showStaticPreview ? t('closeSafePreview') : t('safePreview')"
         @click="showStaticPreview = !showStaticPreview"
-        class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-      >
-        {{ showStaticPreview ? t('closeSafePreview') : t('safePreview') }}
-      </button>
+        class="apple-secondary-button"
+      />
     </div>
 
     <div
@@ -43,13 +43,13 @@
         <p class="text-sm">
           {{ t('fullPreviewDetails') }}
         </p>
-        <button
+        <IconButton
+          icon="preview"
+          :label="isOpeningFullPreview ? t('opening') : t('openFullPreview')"
           @click="openFullPreview"
           :disabled="isOpeningFullPreview"
-          class="px-4 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-        >
-          {{ isOpeningFullPreview ? t('opening') : t('openFullPreview') }}
-        </button>
+          class="apple-primary-button disabled:opacity-50"
+        />
       </div>
     </div>
   </div>
@@ -57,6 +57,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import IconButton from './IconButton.vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { t } from '../i18n'
@@ -66,7 +67,7 @@ const props = defineProps<{
 }>()
 
 let previewWindowSequence = 0
-const showStaticPreview = ref(false)
+const showStaticPreview = ref(true)
 const isOpeningFullPreview = ref(false)
 const previewError = ref<string | null>(null)
 
