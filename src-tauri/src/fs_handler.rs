@@ -102,22 +102,11 @@ pub fn read_file(workspace_path: String, path: String) -> Result<String, String>
     read_document_content(&path)
 }
 
-#[command]
-pub fn write_file(workspace_path: String, path: String, content: String) -> Result<(), String> {
-    let path = document_file_in_workspace(&workspace_path, &path)?;
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .open(&path)
-        .map_err(|e| format!("写入文件失败: {}", e))?;
-    file.lock().map_err(|e| e.to_string())?;
-    replace_document_file(&path, &content, &file, None)
-}
-
 fn replace_document_file(
     path: &Path,
     content: &str,
     original: &fs::File,
-    expected_bytes: Option<&[u8]>,
+    expected_bytes: &[u8],
 ) -> Result<(), String> {
     use std::io::Write;
     let parent = path.parent().ok_or("无法获取文件所在目录")?;
@@ -151,10 +140,10 @@ fn replace_document_file(
         .write_all(content.as_bytes())
         .and_then(|_| temporary.as_file().sync_all())
         .map_err(|e| e.to_string())?;
-    if let Some(bytes) = expected_bytes {
-        if fs::read(path).map_err(|e| e.to_string())? != bytes {
-            return Err("文件已被外部程序修改，未覆盖磁盘。请保留当前草稿并重新打开文件核对差异。".into());
-        }
+    if fs::read(path).map_err(|e| e.to_string())? != expected_bytes {
+        return Err(
+            "文件已被外部程序修改，未覆盖磁盘。请保留当前草稿并重新打开文件核对差异。".into(),
+        );
     }
     temporary.persist(path).map_err(|e| e.error.to_string())?;
     Ok(())
@@ -358,5 +347,5 @@ pub fn write_file_checked(
         );
     }
 
-    replace_document_file(&path, &content, &file, Some(&bytes))
+    replace_document_file(&path, &content, &file, &bytes)
 }

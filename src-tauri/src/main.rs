@@ -41,7 +41,6 @@ fn main() {
             mcp::mcp_configuration,
             fs_handler::list_files,
             fs_handler::read_file,
-            fs_handler::write_file,
             fs_handler::write_file_checked,
             fs_handler::create_markdown_file,
             fs_handler::delete_markdown_file,
