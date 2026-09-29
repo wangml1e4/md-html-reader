@@ -6,7 +6,19 @@
 
 > A local-first macOS Markdown editing and review workspace with anchored comments, workspace search, Chinese translation copies, and standalone HTML export.
 
-Markdown Reader is a local-first macOS app for editing Markdown in place, leaving anchored review comments, searching a workspace, and exporting standalone HTML. Core work requires no account or API key. Optional AI requests ask for approval.
+## Review workflow
+
+1. Open a folder you control and edit Markdown in place.
+2. Select a passage to add an anchored comment stored beside the source.
+3. Search the workspace, then export a standalone HTML reading version for handoff.
+
+The app can also create a separate Chinese translation copy. Optional AI actions ask for approval before sending the current document to your chosen provider.
+
+## Privacy and beta status
+
+Local editing, comments, search, and export need no account or API key. The desktop app has no built-in analytics. Saved OpenAI-compatible API keys reside in the current user's application configuration directory; see the [privacy statement](PRIVACY.md) for details.
+
+Version 0.9.2 is an Apple Silicon macOS beta without Developer ID signing or notarization. Keep a copy of important documents and read the [beta limitations](BETA_LIMITATIONS.md).
 
 ## Run locally
 
@@ -19,6 +31,4 @@ pnpm install --frozen-lockfile
 pnpm exec tauri dev
 ```
 
-This source mirror omits internal tests and project notes. The current macOS beta is not Developer ID signed or notarized. See [beta limitations](BETA_LIMITATIONS.md) and the [privacy statement](PRIVACY.md).
-
-Released under the [MIT License](LICENSE).
+This source mirror omits internal tests and project notes. Released under the [MIT License](LICENSE).
