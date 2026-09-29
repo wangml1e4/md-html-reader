@@ -6,7 +6,8 @@ use std::path::Path;
 use tauri::{command, AppHandle, Manager};
 
 use crate::path_guard::{
-    document_file_in_workspace, is_ignored_name, is_supported_document_path, workspace_root,
+    document_file_in_workspace, is_html_document_path, is_ignored_name, is_supported_document_path,
+    workspace_root,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -104,7 +105,7 @@ pub fn read_file(workspace_path: String, path: String) -> Result<String, String>
 
 fn replace_document_file(
     path: &Path,
-    content: &str,
+    content: &[u8],
     original: &fs::File,
     expected_bytes: &[u8],
 ) -> Result<(), String> {
@@ -137,7 +138,7 @@ fn replace_document_file(
         }
     }
     temporary
-        .write_all(content.as_bytes())
+        .write_all(content)
         .and_then(|_| temporary.as_file().sync_all())
         .map_err(|e| e.to_string())?;
     if fs::read(path).map_err(|e| e.to_string())? != expected_bytes {
@@ -253,6 +254,81 @@ fn decode_document_bytes(bytes: &[u8]) -> String {
     encoding.decode(bytes).0.into_owned()
 }
 
+fn encode_document_bytes(path: &Path, original: &[u8], content: &str) -> Result<Vec<u8>, String> {
+    let invalid = || "文件编码无法无损识别，未覆盖磁盘。请先备份并转换为 UTF-8。".to_string();
+    if let Some(bytes) = original.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        std::str::from_utf8(bytes).map_err(|_| invalid())?;
+        return Ok([&[0xEF, 0xBB, 0xBF][..], content.as_bytes()].concat());
+    }
+    if let Some(bytes) = original.strip_prefix(&[0xFF, 0xFE]) {
+        if UTF_16LE.decode_without_bom_handling(bytes).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, true, true));
+    }
+    if let Some(bytes) = original.strip_prefix(&[0xFE, 0xFF]) {
+        if UTF_16BE.decode_without_bom_handling(bytes).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, false, true));
+    }
+    let declared = is_html_document_path(path)
+        .then(|| declared_encoding(original))
+        .flatten();
+    if std::str::from_utf8(original).is_ok()
+        && !(original.is_ascii() && declared.is_some_and(|encoding| encoding != UTF_8))
+    {
+        return Ok(content.as_bytes().to_vec());
+    }
+    if looks_like_utf16le(original) {
+        if UTF_16LE.decode_without_bom_handling(original).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, true, false));
+    }
+    if looks_like_utf16be(original) {
+        if UTF_16BE.decode_without_bom_handling(original).1 {
+            return Err(invalid());
+        }
+        return Ok(encode_utf16_bytes(content, false, false));
+    }
+    let encoding = declared.ok_or_else(invalid)?;
+    if encoding == UTF_8 || encoding.decode_without_bom_handling(original).1 {
+        return Err(invalid());
+    }
+    if encoding == UTF_16LE {
+        return Ok(encode_utf16_bytes(content, true, false));
+    }
+    if encoding == UTF_16BE {
+        return Ok(encode_utf16_bytes(content, false, false));
+    }
+    let (bytes, _, had_errors) = encoding.encode(content);
+    if had_errors {
+        return Err("新增内容无法用原文件编码保存，未覆盖磁盘。请先将文件转换为 UTF-8。".into());
+    }
+    Ok(bytes.into_owned())
+}
+
+fn encode_utf16_bytes(content: &str, little_endian: bool, bom: bool) -> Vec<u8> {
+    let mut bytes = if bom {
+        if little_endian {
+            vec![0xFF, 0xFE]
+        } else {
+            vec![0xFE, 0xFF]
+        }
+    } else {
+        Vec::new()
+    };
+    for code_unit in content.encode_utf16() {
+        bytes.extend_from_slice(&if little_endian {
+            code_unit.to_le_bytes()
+        } else {
+            code_unit.to_be_bytes()
+        });
+    }
+    bytes
+}
+
 fn looks_like_utf16le(bytes: &[u8]) -> bool {
     let pairs = bytes.chunks_exact(2);
     let pair_count = pairs.len();
@@ -267,8 +343,23 @@ fn looks_like_utf16be(bytes: &[u8]) -> bool {
 
 fn declared_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
     let sample = String::from_utf8_lossy(&bytes[..bytes.len().min(8 * 1024)]).to_ascii_lowercase();
-    let charset_start = sample.find("charset")? + "charset".len();
-    let value = sample[charset_start..]
+    let after_label = sample
+        .trim_start()
+        .strip_prefix("<?xml")
+        .and_then(|xml| xml.split_once("?>"))
+        .and_then(|(declaration, _)| {
+            declaration
+                .find("encoding")
+                .map(|index| &declaration[index + "encoding".len()..])
+        })
+        .or_else(|| {
+            sample.split("<meta").skip(1).find_map(|part| {
+                let (tag, _) = part.split_once('>')?;
+                tag.find("charset")
+                    .map(|index| &tag[index + "charset".len()..])
+            })
+        })?;
+    let value = after_label
         .trim_start_matches(|character: char| character.is_ascii_whitespace() || character == '=')
         .trim_start_matches(['\'', '"']);
     let label = value
@@ -347,5 +438,6 @@ pub fn write_file_checked(
         );
     }
 
-    replace_document_file(&path, &content, &file, &bytes)
+    let encoded = encode_document_bytes(&path, &bytes, &content)?;
+    replace_document_file(&path, &encoded, &file, &bytes)
 }
